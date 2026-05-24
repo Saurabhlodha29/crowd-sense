@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "CrowdSense",
+    "slug": "crowdsense",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0a0e1a"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0e1a"
+      },
+      "package": "com.crowdsense.app"
+    },
+    "ios": {
+      "bundleIdentifier": "com.crowdsense.app"
+    },
+    "extra": {
+      "eas": { "projectId": "your-eas-project-id" }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+__pycache__/
+.env
+.env.production
+*.log
+*.log.*
+*.tmp
+*.gz
+.expo/
+*.zip
+test_reading.json

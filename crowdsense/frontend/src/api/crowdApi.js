@@ -44,4 +44,10 @@ export const crowdApi = {
   resolveAlert: (id) => api.put(`/alerts/${id}/resolve`),
 };
 
+// These are the two functions MobileApp.jsx imports
+export const getCrowdReadings = () => api.get("/readings/latest");
+export const getLocations = () => api.get("/locations");
+
 export default crowdApi;
+
+

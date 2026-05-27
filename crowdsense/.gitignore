@@ -1,11 +1,54 @@
-node_modules/
+# ─── CrowdSense Root .gitignore ───────────────────────────────────────────────
+
+# ─── Python (edge agent & ML) ────────────────────────────────────────────────
+venv/
+env/
 __pycache__/
-.env
-.env.production
-*.log
-*.log.*
-*.tmp
-*.gz
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+.eggs/
+edge/data/crowdsense_local.db
+edge/models/yolov8n.pt
+ml/__pycache__/
+
+# ─── Java / Spring Boot backend ──────────────────────────────────────────────
+backend/target/
+backend/*.log
+backend/*.log.*
+backend/*.gz
+backend/*.tmp
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# ─── Node.js (frontend & mobile) ─────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+mobile/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# ─── Expo / React Native ─────────────────────────────────────────────────────
+mobile/.expo/
+mobile/.expo-shared/
+mobile/android/
+mobile/ios/
+mobile/.env          # contains local IP — don't commit
 .expo/
-*.zip
-test_reading.json
+
+# ─── Secrets & local config ──────────────────────────────────────────────────
+backend/src/main/resources/firebase-service-account.json
+*.env.local
+*.env.production.local
+
+# ─── OS & editor ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+*.swo
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/

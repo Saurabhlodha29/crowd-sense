@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar.jsx";
+import MobileApp from "./pages/MobileApp";
 import TopBar from "./components/TopBar.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Locations from "./pages/Locations.jsx";
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/history" element={<History />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/app" element={<MobileApp />} />
       </Routes>
     </ProtectedLayout>
   );

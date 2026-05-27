@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from "react";
 import { Client } from "@stomp/stompjs";
-import SockJS from "sockjs-client";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8080";
 
@@ -10,8 +9,11 @@ const alertListeners = new Set();
 
 function getClient() {
   if (sharedClient) return sharedClient;
+  
+  const wsUrl = BACKEND_URL.replace(/^http/, 'ws') + "/ws/websocket";
+  
   sharedClient = new Client({
-    webSocketFactory: () => new SockJS(BACKEND_URL + "/ws"),
+    brokerURL: wsUrl,
     onConnect: () => {
       sharedClient.subscribe("/topic/crowd", (msg) => {
         const data = JSON.parse(msg.body);

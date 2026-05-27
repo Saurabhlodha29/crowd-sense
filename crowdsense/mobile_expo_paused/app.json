@@ -7,10 +7,15 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
+      "image": "./assets/splash.png",
       "backgroundColor": "#0a0e1a"
+    },
+    "updates": {
+      "enabled": false
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a0e1a"
       },
       "package": "com.crowdsense.app"
@@ -18,8 +23,6 @@
     "ios": {
       "bundleIdentifier": "com.crowdsense.app"
     },
-    "extra": {
-      "eas": { "projectId": "your-eas-project-id" }
-    }
+    "plugins": []
   }
 }

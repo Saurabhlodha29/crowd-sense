@@ -3,64 +3,69 @@ import { Client } from "@stomp/stompjs";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8080";
 
+// Shared singleton client — prevents duplicate connections across re-renders
 let sharedClient = null;
-const listeners = new Set();
-const alertListeners = new Set();
+const subscribers = new Set();
 
-function getClient() {
-  if (sharedClient) return sharedClient;
-  
-  const wsUrl = BACKEND_URL.replace(/^http/, 'ws') + "/ws/websocket";
-  
+function getOrCreateClient(onMessage) {
+  if (sharedClient && sharedClient.connected) {
+    return sharedClient;
+  }
+
+  const wsUrl = BACKEND_URL.replace(/^http/, "ws") + "/ws/websocket";
+
   sharedClient = new Client({
     brokerURL: wsUrl,
+    reconnectDelay: 5000,
     onConnect: () => {
+      console.log("[WS] Connected to CrowdSense backend");
       sharedClient.subscribe("/topic/crowd", (msg) => {
-        const data = JSON.parse(msg.body);
-        listeners.forEach((fn) => fn(data));
+        try {
+          const data = JSON.parse(msg.body);
+          subscribers.forEach((cb) => cb({ type: "crowd", data }));
+        } catch (e) {
+          console.warn("[WS] Bad crowd message", e);
+        }
       });
       sharedClient.subscribe("/topic/alerts", (msg) => {
-        const data = JSON.parse(msg.body);
-        alertListeners.forEach((fn) => fn(data));
+        try {
+          const data = JSON.parse(msg.body);
+          subscribers.forEach((cb) => cb({ type: "alert", data }));
+        } catch (e) {
+          console.warn("[WS] Bad alert message", e);
+        }
       });
     },
-    onStompError: () => {},
-    reconnectDelay: 5000,
+    onDisconnect: () => console.log("[WS] Disconnected"),
+    onStompError: (frame) => console.error("[WS] STOMP error:", frame),
   });
+
   sharedClient.activate();
   return sharedClient;
 }
 
-export function useWebSocket(onCrowdUpdate, onAlertUpdate) {
+export function useWebSocket() {
+  const [latestCrowdUpdate, setLatestCrowdUpdate] = useState(null);
+  const [latestAlert, setLatestAlert] = useState(null);
   const [connected, setConnected] = useState(false);
-  const [lastHeartbeat, setLastHeartbeat] = useState(null);
 
   useEffect(() => {
-    const client = getClient();
-
-    const crowdFn = (data) => {
-      setConnected(true);
-      setLastHeartbeat(new Date().toISOString());
-      onCrowdUpdate && onCrowdUpdate(data);
-    };
-    const alertFn = (data) => {
-      onAlertUpdate && onAlertUpdate(data);
+    const handler = ({ type, data }) => {
+      if (type === "crowd") {
+        setLatestCrowdUpdate(data);
+        setConnected(true);
+      } else if (type === "alert") {
+        setLatestAlert(data);
+      }
     };
 
-    listeners.add(crowdFn);
-    alertListeners.add(alertFn);
-
-    // Check connection state
-    const poll = setInterval(() => {
-      setConnected(client.connected);
-    }, 2000);
+    subscribers.add(handler);
+    getOrCreateClient(handler);
 
     return () => {
-      listeners.delete(crowdFn);
-      alertListeners.delete(alertFn);
-      clearInterval(poll);
+      subscribers.delete(handler);
     };
-  }, [onCrowdUpdate, onAlertUpdate]);
+  }, []);
 
-  return { connected, lastHeartbeat };
+  return { latestCrowdUpdate, latestAlert, connected };
 }

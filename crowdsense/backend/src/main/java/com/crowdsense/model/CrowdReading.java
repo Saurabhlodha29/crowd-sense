@@ -2,8 +2,6 @@ package com.crowdsense.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 
 @Entity
@@ -16,7 +14,6 @@ public class CrowdReading {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @JdbcTypeCode(SqlTypes.UUID)
     private String id;
 
     @Column(name = "location_id", nullable = false)
@@ -44,8 +41,9 @@ public class CrowdReading {
 
     @PrePersist
     public void prePersist() {
-        if (this.createdAt == null) {
+        if (this.createdAt == null)
             this.createdAt = Instant.now();
-        }
+        if (this.capturedAt == null)
+            this.capturedAt = Instant.now();
     }
 }

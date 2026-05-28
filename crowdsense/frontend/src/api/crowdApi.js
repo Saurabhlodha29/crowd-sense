@@ -1,53 +1,59 @@
 import axios from "axios";
 
-const BASE = import.meta.env.VITE_BACKEND_URL || "http://localhost:8080";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8080";
 
 const api = axios.create({
-  baseURL: BASE + "/api/v1",
+  baseURL: `${BACKEND_URL}/api/v1`,
   timeout: 10000,
 });
 
+// ── Attach JWT token to every request if present ──
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("cs_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const token = localStorage.getItem("crowdsense_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
-api.interceptors.response.use(
-  (r) => r,
-  (err) => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem("cs_token");
-      window.location.href = "/";
-    }
-    return Promise.reject(err);
-  }
-);
+// ── Auth ──
+export const login = (email, password) =>
+  api.post("/auth/login", { email, password });
 
-export const crowdApi = {
-  // Auth
-  login: (email, password) =>
-    api.post("/auth/login", { email, password }),
+export const getMe = () =>
+  api.get("/auth/me");
 
-  // Readings
-  getLatestReadings: () => api.get("/readings/latest"),
-  getReadingsByLocation: (locationId, limit = 100) =>
-    api.get(`/readings/location/${locationId}?limit=${limit}`),
-  health: () => api.get("/readings/health"),
+// ── Crowd Readings ──
+export const getLatestReadings = () =>
+  api.get("/readings/latest");
 
-  // Locations
-  getLocations: () => api.get("/locations"),
-  createLocation: (data) => api.post("/locations", data),
+// Alias used by MobileApp.jsx
+export const getCrowdReadings = getLatestReadings;
 
-  // Alerts
-  getAlerts: () => api.get("/alerts"),
-  resolveAlert: (id) => api.put(`/alerts/${id}/resolve`),
-};
+export const getReadingsByLocation = (locationId, limit = 200) =>
+  api.get(`/readings/location/${locationId}`, { params: { limit } });
 
-// These are the two functions MobileApp.jsx imports
-export const getCrowdReadings = () => api.get("/readings/latest");
-export const getLocations = () => api.get("/locations");
+export const postReading = (data) =>
+  api.post("/readings", data);
 
-export default crowdApi;
+export const healthCheck = () =>
+  api.get("/readings/health");
 
+// ── Locations ──
+export const getLocations = () =>
+  api.get("/locations");
 
+export const createLocation = (data) =>
+  api.post("/locations", data);
+
+// ── Alerts ──
+export const getAlerts = (filter = "all") =>
+  api.get("/alerts", { params: { filter } });
+
+export const getAlertStats = () =>
+  api.get("/alerts/stats");
+
+export const resolveAlert = (id) =>
+  api.put(`/alerts/${id}/resolve`);
+
+export default api;

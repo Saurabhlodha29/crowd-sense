@@ -12,34 +12,37 @@ import java.util.List;
 @Repository
 public interface CrowdReadingRepository extends JpaRepository<CrowdReading, String> {
 
-    // Get the latest reading per location (for the dashboard summary cards)
-    @Query(value = """
-            SELECT DISTINCT ON (location_id) *
-            FROM crowd_readings
-            ORDER BY location_id, captured_at DESC
-            """, nativeQuery = true)
-    List<CrowdReading> findLatestPerLocation();
+        /**
+         * FIX: Uses PostgreSQL's DISTINCT ON to get the single latest reading per
+         * location.
+         * This replaces broken JPQL correlated subquery which threw on empty table /
+         * type mismatch.
+         */
+        @Query(value = "SELECT DISTINCT ON (location_id) * FROM crowd_readings ORDER BY location_id, captured_at DESC", nativeQuery = true)
+        List<CrowdReading> findLatestPerLocation();
 
-    // Get N most recent readings for a specific location
-    @Query(value = """
-            SELECT * FROM crowd_readings
-            WHERE location_id = :locationId
-            ORDER BY captured_at DESC
-            LIMIT :limit
-            """, nativeQuery = true)
-    List<CrowdReading> findTopNByLocationIdOrderByCapturedAtDesc(
-            @Param("locationId") String locationId,
-            @Param("limit") int limit);
+        /**
+         * Get last N readings for a specific location, newest first.
+         */
+        @Query(value = "SELECT * FROM crowd_readings WHERE location_id = :locationId ORDER BY captured_at DESC LIMIT :limitVal", nativeQuery = true)
+        List<CrowdReading> findTopNByLocationIdOrderByCapturedAtDesc(
+                        @Param("locationId") String locationId,
+                        @Param("limitVal") int limitVal);
 
-    // Get readings in a time window (for historical charts)
-    @Query(value = """
-            SELECT * FROM crowd_readings
-            WHERE location_id = :locationId
-              AND captured_at BETWEEN :from AND :to
-            ORDER BY captured_at ASC
-            """, nativeQuery = true)
-    List<CrowdReading> findByLocationIdAndTimeRange(
-            @Param("locationId") String locationId,
-            @Param("from") Instant from,
-            @Param("to") Instant to);
+        /**
+         * Count readings in a time window — used by AlertService.
+         */
+        @Query(value = "SELECT COUNT(*) FROM crowd_readings WHERE location_id = :locationId AND captured_at > :since", nativeQuery = true)
+        long countByLocationIdAndCapturedAtAfter(
+                        @Param("locationId") String locationId,
+                        @Param("since") Instant since);
+
+        /**
+         * Get readings between timestamps for a location.
+         */
+        @Query(value = "SELECT * FROM crowd_readings WHERE location_id = :locationId AND captured_at BETWEEN :from AND :to ORDER BY captured_at ASC", nativeQuery = true)
+        List<CrowdReading> findByLocationIdAndCapturedAtBetween(
+                        @Param("locationId") String locationId,
+                        @Param("from") Instant from,
+                        @Param("to") Instant to);
 }

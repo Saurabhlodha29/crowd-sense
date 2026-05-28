@@ -1,5 +1,6 @@
 package com.crowdsense.controller;
 
+import com.crowdsense.dto.LocationDTO;
 import com.crowdsense.model.Location;
 import com.crowdsense.service.LocationService;
 import lombok.RequiredArgsConstructor;
@@ -24,20 +25,11 @@ public class LocationController {
 
     @GetMapping("/{id}")
     public ResponseEntity<Location> getLocation(@PathVariable String id) {
-        return locationService.getLocationById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        return ResponseEntity.ok(locationService.getById(id));
     }
 
     @PostMapping
-    public ResponseEntity<Location> createLocation(@RequestBody Location location) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(locationService.createLocation(location));
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deactivateLocation(@PathVariable String id) {
-        return locationService.deactivateLocation(id)
-                .map(l -> ResponseEntity.noContent().<Void>build())
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Location> createLocation(@RequestBody LocationDTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(locationService.createLocation(dto));
     }
 }

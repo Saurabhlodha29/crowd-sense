@@ -2,6 +2,7 @@ package com.crowdsense.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import java.time.Instant;
 
 @Entity
 @Table(name = "locations")
@@ -28,7 +29,17 @@ public class Location {
     @Column(name = "max_capacity")
     private Integer maxCapacity;
 
-    @Builder.Default
     @Column(name = "is_active")
     private Boolean isActive = true;
+
+    @Column(name = "created_at")
+    private Instant createdAt;
+
+    @PrePersist
+    public void prePersist() {
+        if (this.createdAt == null)
+            this.createdAt = Instant.now();
+        if (this.isActive == null)
+            this.isActive = true;
+    }
 }

@@ -2,8 +2,6 @@ package com.crowdsense.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 
 @Entity
@@ -16,7 +14,6 @@ public class Alert {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @JdbcTypeCode(SqlTypes.UUID)
     private String id;
 
     @Column(name = "location_id", nullable = false)
@@ -35,7 +32,6 @@ public class Alert {
     private Integer personCount;
 
     @Builder.Default
-    @Column(nullable = false)
     private Boolean resolved = false;
 
     @Column(name = "triggered_at")
@@ -46,11 +42,9 @@ public class Alert {
 
     @PrePersist
     public void prePersist() {
-        if (this.triggeredAt == null) {
+        if (this.triggeredAt == null)
             this.triggeredAt = Instant.now();
-        }
-        if (this.resolved == null) {
+        if (this.resolved == null)
             this.resolved = false;
-        }
     }
 }

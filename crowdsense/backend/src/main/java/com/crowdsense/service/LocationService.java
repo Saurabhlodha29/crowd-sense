@@ -1,12 +1,12 @@
 package com.crowdsense.service;
 
+import com.crowdsense.dto.LocationDTO;
 import com.crowdsense.model.Location;
 import com.crowdsense.repository.LocationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -18,18 +18,21 @@ public class LocationService {
         return locationRepository.findByIsActiveTrue();
     }
 
-    public Optional<Location> getLocationById(String id) {
-        return locationRepository.findById(id);
+    public Location getById(String id) {
+        return locationRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Location not found: " + id));
     }
 
-    public Location createLocation(Location location) {
-        return locationRepository.save(location);
-    }
-
-    public Optional<Location> deactivateLocation(String id) {
-        return locationRepository.findById(id).map(loc -> {
-            loc.setIsActive(false);
-            return locationRepository.save(loc);
-        });
+    public Location createLocation(LocationDTO dto) {
+        Location loc = Location.builder()
+                .id(dto.getId() != null ? dto.getId() : "loc_" + System.currentTimeMillis())
+                .name(dto.getName())
+                .latitude(dto.getLatitude())
+                .longitude(dto.getLongitude())
+                .description(dto.getDescription())
+                .maxCapacity(dto.getMaxCapacity())
+                .isActive(true)
+                .build();
+        return locationRepository.save(loc);
     }
 }

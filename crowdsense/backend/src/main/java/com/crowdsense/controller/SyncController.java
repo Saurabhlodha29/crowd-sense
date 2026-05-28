@@ -18,9 +18,7 @@ public class SyncController {
 
     @PostMapping("/bulk")
     public ResponseEntity<Map<String, Object>> bulkSync(@RequestBody BulkSyncDTO dto) {
-        int count = syncService.processBulkSync(dto);
-        return ResponseEntity.ok(Map.of(
-                "status", "success",
-                "synced", count));
+        int count = syncService.bulkSync(dto);
+        return ResponseEntity.ok(Map.of("status", "success", "synced", count));
     }
 }

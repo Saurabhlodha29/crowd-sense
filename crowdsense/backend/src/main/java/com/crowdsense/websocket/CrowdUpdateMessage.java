@@ -6,8 +6,8 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Data
-@AllArgsConstructor
 @NoArgsConstructor
+@AllArgsConstructor
 public class CrowdUpdateMessage {
     private String locationId;
     private Integer personCount;

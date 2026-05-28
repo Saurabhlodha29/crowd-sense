@@ -1,95 +1,40 @@
-import { getCrowdConfig } from "../utils/crowdLevels.js";
-import { timeAgo } from "../utils/formatters.js";
-import { Users, MapPin } from "lucide-react";
+import { getCrowdConfig } from "../utils/crowdLevels";
+import { timeAgo } from "../utils/formatters";
 
-export default function CrowdLevelCard({ locationName, reading }) {
-  if (!reading) {
-    return (
-      <div style={styles.card}>
-        <div style={styles.header}>
-          <MapPin size={14} color="#4a5568" />
-          <span style={styles.locName}>{locationName || "Unknown"}</span>
-        </div>
-        <div style={styles.noData}>No data yet</div>
-      </div>
-    );
-  }
-
-  const { color, label, bg } = getCrowdConfig(reading.crowdLevel);
+export default function CrowdLevelCard({ locationName, personCount, crowdLevel, capturedAt }) {
+  const cfg = getCrowdConfig(crowdLevel);
 
   return (
-    <div style={{ ...styles.card, borderLeft: `3px solid ${color}` }}>
-      <div style={styles.header}>
-        <MapPin size={14} color={color} />
-        <span style={styles.locName}>{locationName}</span>
-        <span style={{ ...styles.badge, background: bg, color }}>
-          {label}
-        </span>
+    <div style={{
+      background: "#1e293b",
+      border: `1px solid ${cfg.border}`,
+      borderRadius: 12,
+      padding: "20px 24px",
+      minWidth: 200,
+    }}>
+      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>
+        {locationName || "Location"}
       </div>
-      <div style={styles.countRow}>
-        <Users size={18} color={color} />
-        <span style={{ ...styles.count, color }}>{reading.personCount}</span>
-        <span style={styles.people}>people</span>
+      <div style={{ fontSize: 40, fontWeight: 700, color: cfg.color, lineHeight: 1.1 }}>
+        {personCount ?? "—"}
       </div>
-      {reading.confidence && (
-        <div style={styles.conf}>conf: {(reading.confidence * 100).toFixed(0)}%</div>
-      )}
-      <div style={styles.time}>{timeAgo(reading.capturedAt)}</div>
+      <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>people detected</div>
+      <div style={{
+        display: "inline-block",
+        marginTop: 10,
+        padding: "3px 10px",
+        borderRadius: 20,
+        background: cfg.bg,
+        color: cfg.color,
+        fontSize: 12,
+        fontWeight: 600,
+        border: `1px solid ${cfg.border}`,
+      }}>
+        {cfg.label}
+      </div>
+      <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>
+        {timeAgo(capturedAt)}
+      </div>
     </div>
   );
 }
-
-const styles = {
-  card: {
-    background: "#151d2e",
-    border: "1px solid #1e2d45",
-    borderRadius: 12,
-    padding: "16px 18px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-    transition: "border-color 0.18s",
-    cursor: "default",
-  },
-  header: {
-    display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
-  },
-  locName: {
-    fontFamily: "'Syne', sans-serif",
-    fontWeight: 600,
-    fontSize: 14,
-    color: "#c5cfe0",
-    flex: 1,
-  },
-  badge: {
-    fontSize: 10,
-    fontFamily: "'Space Mono', monospace",
-    fontWeight: 700,
-    letterSpacing: "0.08em",
-    padding: "2px 8px",
-    borderRadius: 20,
-    textTransform: "uppercase",
-  },
-  countRow: {
-    display: "flex", alignItems: "baseline", gap: 8,
-  },
-  count: {
-    fontFamily: "'Space Mono', monospace",
-    fontSize: 32,
-    fontWeight: 700,
-    lineHeight: 1,
-  },
-  people: {
-    color: "#7a8ba0", fontSize: 12,
-  },
-  conf: {
-    fontSize: 11,
-    color: "#4a5568",
-    fontFamily: "'Space Mono', monospace",
-  },
-  time: {
-    fontSize: 11,
-    color: "#4a5568",
-    fontFamily: "'Space Mono', monospace",
-  },
-};

@@ -8,12 +8,13 @@ import java.util.List;
 
 @Repository
 public interface AlertRepository extends JpaRepository<Alert, String> {
+    List<Alert> findTop50ByOrderByTriggeredAtDesc();
 
     List<Alert> findByResolvedFalseOrderByTriggeredAtDesc();
 
-    List<Alert> findAllByOrderByTriggeredAtDesc();
+    List<Alert> findByResolvedTrueOrderByTriggeredAtDesc();
 
-    List<Alert> findByLocationIdOrderByTriggeredAtDesc(String locationId);
+    long countByResolvedFalse();
 
-    boolean existsByLocationIdAndCrowdLevelAndResolvedFalse(String locationId, String crowdLevel);
+    long countByResolvedTrue();
 }

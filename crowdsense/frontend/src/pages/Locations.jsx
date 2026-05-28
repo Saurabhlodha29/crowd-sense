@@ -1,217 +1,224 @@
 import { useState, useEffect } from "react";
-import crowdApi from "../api/crowdApi.js";
-import LoadingSpinner from "../components/LoadingSpinner.jsx";
-import CrowdMap from "../components/CrowdMap.jsx";
-import { getCrowdConfig } from "../utils/crowdLevels.js";
-import { MapPin, Plus, X, CheckCircle } from "lucide-react";
+import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+import { getLocations, createLocation, getLatestReadings } from "../api/crowdApi";
+import { getCrowdConfig } from "../utils/crowdLevels";
+import { timeAgo } from "../utils/formatters";
+
+// Fix Leaflet default icon missing in Vite
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+});
 
 export default function Locations() {
   const [locations, setLocations] = useState([]);
-  const [readings, setReadings] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ id: "", name: "", latitude: "", longitude: "", description: "", maxCapacity: "" });
+  const [readings,  setReadings]  = useState([]);
+  const [showForm,  setShowForm]  = useState(false);
+  const [form, setForm] = useState({
+    name: "", latitude: "", longitude: "", description: "", maxCapacity: ""
+  });
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  async function fetchData() {
-    setLoading(true);
-    try {
-      const [locRes, readRes] = await Promise.all([
-        crowdApi.getLocations(),
-        crowdApi.getLatestReadings(),
-      ]);
-      setLocations(locRes.data || []);
-      const byLoc = {};
-      (readRes.data || []).forEach((r) => { byLoc[r.locationId] = r; });
-      setReadings(byLoc);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+  function load() {
+    Promise.all([getLocations(), getLatestReadings()])
+      .then(([l, r]) => {
+        setLocations(l.data || []);
+        setReadings(r.data || []);
+      })
+      .catch(console.error);
   }
 
-  async function handleSave(e) {
+  useEffect(() => { load(); }, []);
+
+  function getReadingForLocation(locId) {
+    return readings.find((r) => r.locationId === locId);
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault();
-    setSaving(true);
-    setError("");
+    if (!form.name || !form.latitude || !form.longitude) return;
     try {
-      await crowdApi.createLocation({
-        id: form.id || undefined,
+      setSaving(true);
+      await createLocation({
         name: form.name,
         latitude: parseFloat(form.latitude),
         longitude: parseFloat(form.longitude),
-        description: form.description || undefined,
-        maxCapacity: form.maxCapacity ? parseInt(form.maxCapacity) : undefined,
+        description: form.description,
+        maxCapacity: form.maxCapacity ? parseInt(form.maxCapacity) : null,
       });
-      setSaved(true);
-      setTimeout(() => { setSaved(false); setShowForm(false); fetchData(); }, 1200);
-      setForm({ id: "", name: "", latitude: "", longitude: "", description: "", maxCapacity: "" });
+      setForm({ name: "", latitude: "", longitude: "", description: "", maxCapacity: "" });
+      setShowForm(false);
+      load();
     } catch (e) {
-      setError(e.response?.data?.message || e.message || "Failed to save");
+      alert("Failed to create location. Make sure you are logged in as admin.");
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) return <LoadingSpinner message="Loading locations…" />;
+  const inputStyle = {
+    background: "#0f172a", border: "1px solid #334155", color: "#f1f5f9",
+    borderRadius: 6, padding: "8px 12px", fontSize: 13, width: "100%", boxSizing: "border-box",
+  };
+
+  const center = locations.length > 0
+    ? [locations[0].latitude, locations[0].longitude]
+    : [28.6139, 77.2090];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ padding: 28 }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h2 style={styles.h2}>Monitored Locations</h2>
-        <button onClick={() => setShowForm(!showForm)} style={styles.addBtn}>
-          {showForm ? <X size={14} /> : <Plus size={14} />}
-          {showForm ? "Cancel" : "Add Location"}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <h2 style={{ margin: 0, color: "#f1f5f9", fontSize: 18, fontWeight: 600 }}>
+          Monitored Locations
+        </h2>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          style={{
+            background: "#3b82f6", color: "#fff", border: "none",
+            borderRadius: 8, padding: "9px 18px", cursor: "pointer", fontSize: 13, fontWeight: 600,
+          }}
+        >
+          + Add Location
         </button>
       </div>
 
-      {/* Add Location Form */}
+      {/* Add Location form */}
       {showForm && (
-        <div className="card" style={{ animation: "fade-in 0.25s ease" }}>
-          <h3 style={styles.formTitle}>New Location</h3>
-          <form onSubmit={handleSave} style={styles.formGrid}>
-            <FormField label="Location ID" value={form.id} onChange={(v) => setForm({ ...form, id: v })} placeholder="loc_002" hint="Leave blank to auto-generate" />
-            <FormField label="Name *" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Main Entrance" required />
-            <FormField label="Latitude *" value={form.latitude} onChange={(v) => setForm({ ...form, latitude: v })} placeholder="28.6139" type="number" step="any" required />
-            <FormField label="Longitude *" value={form.longitude} onChange={(v) => setForm({ ...form, longitude: v })} placeholder="77.2090" type="number" step="any" required />
-            <FormField label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} placeholder="Optional description" />
-            <FormField label="Max Capacity" value={form.maxCapacity} onChange={(v) => setForm({ ...form, maxCapacity: v })} placeholder="100" type="number" />
-            {error && <div style={styles.error}>{error}</div>}
-            <button type="submit" disabled={saving} style={styles.saveBtn}>
-              {saved ? <><CheckCircle size={14} /> Saved!</> : saving ? "Saving…" : "Save Location"}
-            </button>
+        <div style={{
+          background: "#1e293b", border: "1px solid #334155", borderRadius: 12,
+          padding: 24, marginBottom: 24,
+        }}>
+          <h3 style={{ margin: "0 0 16px", color: "#e2e8f0", fontSize: 15 }}>New Location</h3>
+          <form onSubmit={handleSubmit}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>Name *</label>
+                <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. Gate A" />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>Max Capacity</label>
+                <input style={inputStyle} type="number" value={form.maxCapacity} onChange={(e) => setForm({ ...form, maxCapacity: e.target.value })} placeholder="e.g. 200" />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>Latitude *</label>
+                <input style={inputStyle} type="number" step="any" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: e.target.value })} required placeholder="e.g. 28.6139" />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>Longitude *</label>
+                <input style={inputStyle} type="number" step="any" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: e.target.value })} required placeholder="e.g. 77.2090" />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>Description</label>
+              <input style={inputStyle} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="e.g. Main entrance gate" />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button type="submit" disabled={saving} style={{
+                background: "#3b82f6", color: "#fff", border: "none",
+                borderRadius: 6, padding: "8px 20px", cursor: "pointer", fontSize: 13,
+              }}>
+                {saving ? "Saving..." : "Save Location"}
+              </button>
+              <button type="button" onClick={() => setShowForm(false)} style={{
+                background: "#1e293b", color: "#94a3b8", border: "1px solid #334155",
+                borderRadius: 6, padding: "8px 16px", cursor: "pointer", fontSize: 13,
+              }}>
+                Cancel
+              </button>
+            </div>
           </form>
         </div>
       )}
 
-      {/* Map */}
-      <div className="card" style={{ height: 300 }}>
-        <CrowdMap locations={locations} locationReadings={readings} />
-      </div>
-
-      {/* Table */}
-      <div className="card" style={{ overflowX: "auto" }}>
-        {locations.length === 0 ? (
-          <div style={{ color: "#4a5568", padding: 24, fontFamily: "'Space Mono', monospace", textAlign: "center" }}>
-            No locations yet. Add your first location above, then start the sensor agent.
-          </div>
-        ) : (
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                {["ID", "Name", "Coords", "Capacity", "Current Level", "People", "Status"].map((h) => (
-                  <th key={h} style={styles.th}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {locations.map((loc) => {
-                const r = readings[loc.id];
-                const { color, label, bg } = getCrowdConfig(r?.crowdLevel || "LOW");
-                return (
-                  <tr key={loc.id} style={styles.tr}>
-                    <td style={styles.td}><span style={styles.mono}>{loc.id}</span></td>
-                    <td style={styles.td}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <MapPin size={12} color={color} />
-                        <span style={{ color: "#e8edf5" }}>{loc.name}</span>
+      {/* Leaflet Map */}
+      <div style={{ borderRadius: 12, overflow: "hidden", marginBottom: 24, border: "1px solid #334155" }}>
+        <MapContainer
+          center={center}
+          zoom={13}
+          style={{ height: 380 }}
+          key={locations.length}
+        >
+          <TileLayer
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org">OSM</a> &copy; <a href="https://carto.com">CartoDB</a>'
+          />
+          {locations.map((loc) => {
+            const reading = getReadingForLocation(loc.id);
+            const cfg = getCrowdConfig(reading?.crowdLevel);
+            return (
+              <CircleMarker
+                key={loc.id}
+                center={[loc.latitude, loc.longitude]}
+                radius={14}
+                pathOptions={{ color: cfg.color, fillColor: cfg.color, fillOpacity: 0.4, weight: 2 }}
+              >
+                <Popup>
+                  <div style={{ minWidth: 160 }}>
+                    <strong>{loc.name}</strong>
+                    {reading && (
+                      <div style={{ marginTop: 6, fontSize: 12 }}>
+                        <div>{reading.personCount} people · {reading.crowdLevel}</div>
+                        <div style={{ color: "#888", marginTop: 2 }}>{timeAgo(reading.capturedAt)}</div>
                       </div>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={styles.mono}>{loc.latitude?.toFixed(4)}, {loc.longitude?.toFixed(4)}</span>
-                    </td>
-                    <td style={styles.td}><span style={styles.mono}>{loc.maxCapacity || "—"}</span></td>
-                    <td style={styles.td}>
-                      {r ? (
-                        <span style={{ ...styles.badge, background: bg, color }}>{label}</span>
-                      ) : <span style={{ color: "#4a5568" }}>—</span>}
-                    </td>
-                    <td style={styles.td}>
-                      <span style={{ ...styles.mono, color: r ? color : "#4a5568" }}>{r?.personCount ?? "—"}</span>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={{ color: loc.isActive ? "#22c55e" : "#4a5568", fontSize: 11, fontFamily: "'Space Mono', monospace" }}>
-                        {loc.isActive ? "● Active" : "○ Inactive"}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+                    )}
+                    {!reading && <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>No readings yet</div>}
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          })}
+        </MapContainer>
       </div>
+
+      {/* Location cards */}
+      {locations.length === 0 ? (
+        <div style={{
+          textAlign: "center", color: "#475569", padding: 40,
+          fontFamily: "monospace", fontSize: 13,
+        }}>
+          No locations yet. Add your first location above, then start the sensor agent.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {locations.map((loc) => {
+            const reading = getReadingForLocation(loc.id);
+            const cfg = getCrowdConfig(reading?.crowdLevel);
+            return (
+              <div key={loc.id} style={{
+                background: "#1e293b", border: `1px solid ${reading ? cfg.border : "#334155"}`,
+                borderRadius: 10, padding: "16px 20px",
+                display: "flex", alignItems: "center", gap: 16,
+              }}>
+                <div style={{
+                  width: 12, height: 12, borderRadius: "50%", flexShrink: 0,
+                  background: reading ? cfg.color : "#334155",
+                  boxShadow: reading ? `0 0 8px ${cfg.color}` : "none",
+                }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 2 }}>{loc.name}</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>
+                    {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}
+                    {loc.description && ` · ${loc.description}`}
+                  </div>
+                </div>
+                {reading ? (
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: cfg.color }}>{reading.personCount}</div>
+                    <div style={{ fontSize: 11, color: "#475569" }}>{timeAgo(reading.capturedAt)}</div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "#475569" }}>No data</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
-
-function FormField({ label, value, onChange, placeholder, type = "text", step, required, hint }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <label style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, color: "#7a8ba0", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-        {label}
-      </label>
-      <input
-        type={type}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-        style={{
-          background: "#0d1220", border: "1px solid #1e2d45",
-          borderRadius: 6, padding: "8px 12px", color: "#e8edf5",
-          fontFamily: "'Space Mono', monospace", fontSize: 12, outline: "none",
-        }}
-      />
-      {hint && <span style={{ fontSize: 10, color: "#4a5568", fontFamily: "'Space Mono', monospace" }}>{hint}</span>}
-    </div>
-  );
-}
-
-const styles = {
-  h2: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 18, color: "#e8edf5" },
-  addBtn: {
-    display: "flex", alignItems: "center", gap: 6,
-    background: "#3b82f6", color: "#fff", border: "none",
-    borderRadius: 8, padding: "8px 16px", cursor: "pointer",
-    fontFamily: "'Space Mono', monospace", fontSize: 12,
-  },
-  formTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 15, color: "#c5cfe0", marginBottom: 16 },
-  formGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 },
-  error: {
-    gridColumn: "1 / -1",
-    background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
-    borderRadius: 6, padding: "8px 12px",
-    color: "#ef4444", fontSize: 12, fontFamily: "'Space Mono', monospace",
-  },
-  saveBtn: {
-    gridColumn: "1 / -1",
-    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-    background: "#3b82f6", color: "#fff", border: "none",
-    borderRadius: 8, padding: "10px 0", cursor: "pointer",
-    fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14,
-  },
-  table: { width: "100%", borderCollapse: "collapse" },
-  th: {
-    fontFamily: "'Space Mono', monospace", fontSize: 10,
-    color: "#4a5568", textTransform: "uppercase", letterSpacing: "0.1em",
-    padding: "8px 12px", textAlign: "left", borderBottom: "1px solid #1e2d45",
-  },
-  tr: { borderBottom: "1px solid #1a2438", transition: "background 0.12s" },
-  td: { padding: "12px", color: "#7a8ba0", fontSize: 13 },
-  mono: { fontFamily: "'Space Mono', monospace", fontSize: 12 },
-  badge: {
-    fontSize: 10, fontFamily: "'Space Mono', monospace", fontWeight: 700,
-    padding: "2px 8px", borderRadius: 20, letterSpacing: "0.08em",
-    textTransform: "uppercase",
-  },
-};

@@ -16,10 +16,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        // SockJS endpoint — exposes /ws/websocket as raw WebSocket path
+        // Frontend connects to: ws://localhost:8080/ws/websocket
         registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
-        
+
+        // Pure native WebSocket endpoint (no SockJS wrapper)
         registry.addEndpoint("/ws-native")
                 .setAllowedOriginPatterns("*");
     }

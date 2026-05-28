@@ -1,120 +1,82 @@
-import { NavLink, useNavigate } from "react-router-dom";
-import {
-  LayoutDashboard, MapPin, BarChart2, Bell, LogOut, Radio
-} from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { LayoutDashboard, MapPin, History, Bell, LogOut } from "lucide-react";
 
 const NAV = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/locations",  icon: MapPin,          label: "Locations"  },
-  { to: "/history",    icon: BarChart2,        label: "History"    },
-  { to: "/alerts",     icon: Bell,             label: "Alerts"     },
+  { to: "/locations", icon: MapPin,          label: "Locations" },
+  { to: "/history",   icon: History,         label: "History" },
+  { to: "/alerts",    icon: Bell,            label: "Alerts" },
 ];
 
 export default function Sidebar() {
-  const navigate = useNavigate();
+  const location = useLocation();
 
-  function logout() {
-    localStorage.removeItem("cs_token");
-    navigate("/");
-    window.location.reload();
+  function handleLogout() {
+    localStorage.removeItem("crowdsense_token");
+    window.location.href = "/login";
   }
 
   return (
-    <aside style={styles.sidebar}>
+    <aside style={{
+      width: 220,
+      minHeight: "100vh",
+      background: "#0f172a",
+      borderRight: "1px solid #1e293b",
+      display: "flex",
+      flexDirection: "column",
+      padding: "24px 0",
+      flexShrink: 0,
+    }}>
       {/* Logo */}
-      <div style={styles.logo}>
-        <Radio size={22} color="#3b82f6" />
-        <span style={styles.logoText}>CrowdSense</span>
+      <div style={{ padding: "0 20px 32px", borderBottom: "1px solid #1e293b" }}>
+        <span style={{ fontSize: 22, fontWeight: 700, color: "#60a5fa", letterSpacing: "-0.5px" }}>
+          CrowdSense
+        </span>
       </div>
 
-      <nav style={styles.nav}>
-        {NAV.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            style={({ isActive }) => ({
-              ...styles.navItem,
-              ...(isActive ? styles.navItemActive : {}),
-            })}
-          >
-            <Icon size={18} />
-            <span>{label}</span>
-          </NavLink>
-        ))}
+      {/* Nav */}
+      <nav style={{ flex: 1, padding: "16px 0" }}>
+        {NAV.map(({ to, icon: Icon, label }) => {
+          const active = location.pathname === to;
+          return (
+            <Link
+              key={to}
+              to={to}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 20px",
+                color: active ? "#60a5fa" : "#94a3b8",
+                background: active ? "#1e3a5f" : "transparent",
+                borderLeft: active ? "3px solid #3b82f6" : "3px solid transparent",
+                textDecoration: "none",
+                fontSize: 14,
+                fontWeight: active ? 600 : 400,
+                transition: "all 0.15s",
+              }}
+            >
+              <Icon size={17} />
+              {label}
+            </Link>
+          );
+        })}
       </nav>
 
-      <button onClick={logout} style={styles.logout}>
-        <LogOut size={16} />
-        <span>Logout</span>
-      </button>
+      {/* Logout */}
+      <div style={{ padding: "0 20px", borderTop: "1px solid #1e293b", paddingTop: 16 }}>
+        <button
+          onClick={handleLogout}
+          style={{
+            display: "flex", alignItems: "center", gap: 10,
+            color: "#64748b", background: "none", border: "none",
+            cursor: "pointer", fontSize: 14, padding: "8px 0",
+          }}
+        >
+          <LogOut size={16} />
+          Logout
+        </button>
+      </div>
     </aside>
   );
 }
-
-const styles = {
-  sidebar: {
-    width: 220,
-    minWidth: 220,
-    background: "#0d1220",
-    borderRight: "1px solid #1e2d45",
-    display: "flex",
-    flexDirection: "column",
-    padding: "20px 12px",
-    gap: 4,
-  },
-  logo: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "8px 12px 24px",
-    borderBottom: "1px solid #1e2d45",
-    marginBottom: 12,
-  },
-  logoText: {
-    fontFamily: "'Syne', sans-serif",
-    fontWeight: 800,
-    fontSize: 16,
-    letterSpacing: "0.05em",
-    color: "#e8edf5",
-  },
-  nav: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-  },
-  navItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "10px 14px",
-    borderRadius: 8,
-    color: "#7a8ba0",
-    fontFamily: "'Space Mono', monospace",
-    fontSize: 13,
-    fontWeight: 400,
-    textDecoration: "none",
-    transition: "all 0.15s ease",
-    background: "transparent",
-  },
-  navItemActive: {
-    background: "rgba(59,130,246,0.12)",
-    color: "#3b82f6",
-    borderLeft: "2px solid #3b82f6",
-  },
-  logout: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "10px 14px",
-    borderRadius: 8,
-    background: "transparent",
-    color: "#7a8ba0",
-    fontSize: 13,
-    fontFamily: "'Space Mono', monospace",
-    marginTop: "auto",
-    transition: "color 0.15s",
-    border: "none",
-    cursor: "pointer",
-  },
-};

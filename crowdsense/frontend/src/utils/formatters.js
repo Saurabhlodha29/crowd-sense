@@ -1,21 +1,25 @@
-import { format, formatDistanceToNow } from "date-fns";
-
-export function formatTime(ts) {
-  if (!ts) return "—";
-  try { return format(new Date(ts), "HH:mm:ss"); } catch { return ts; }
+export function formatTime(isoString) {
+  if (!isoString) return "—";
+  return new Date(isoString).toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
-export function formatDateTime(ts) {
-  if (!ts) return "—";
-  try { return format(new Date(ts), "MMM d, HH:mm"); } catch { return ts; }
+export function formatDateTime(isoString) {
+  if (!isoString) return "—";
+  return new Date(isoString).toLocaleString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
 }
 
-export function timeAgo(ts) {
-  if (!ts) return "—";
-  try { return formatDistanceToNow(new Date(ts), { addSuffix: true }); } catch { return ts; }
-}
-
-export function formatDate(ts) {
-  if (!ts) return "—";
-  try { return format(new Date(ts), "yyyy-MM-dd"); } catch { return ts; }
+export function timeAgo(isoString) {
+  if (!isoString) return "never";
+  const diff = Math.floor((Date.now() - new Date(isoString)) / 1000);
+  if (diff < 10) return "just now";
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
 }

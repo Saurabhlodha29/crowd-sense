@@ -10,7 +10,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -18,53 +19,91 @@ import java.util.Optional;
 public class AlertService {
 
     private final AlertRepository alertRepository;
-    private final SimpMessagingTemplate messagingTemplate;
     private final NotificationService notificationService;
+    private final SimpMessagingTemplate messagingTemplate;
 
-    private static final List<String> ALERT_LEVELS = List.of("HIGH", "CRITICAL");
+    // Track last alerted level per location to avoid spam
+    private final Map<String, String> lastAlertedLevel = new ConcurrentHashMap<>();
 
     public void checkAndAlert(CrowdReading reading) {
         String level = reading.getCrowdLevel().name();
-        if (!ALERT_LEVELS.contains(level)) return;
+        String locationId = reading.getLocationId();
 
-        boolean alreadyActive = alertRepository.existsByLocationIdAndCrowdLevelAndResolvedFalse(
-                reading.getLocationId(), level);
-        if (alreadyActive) return;
+        // Only alert on HIGH or CRITICAL
+        if (level.equals("HIGH") || level.equals("CRITICAL")) {
+            String prev = lastAlertedLevel.get(locationId);
 
-        String message = String.format(
-                "Crowd at location %s has reached %s level (%d people)",
-                reading.getLocationId(), level, reading.getPersonCount());
+            // Create alert if first time at this level or escalated
+            boolean shouldAlert = (prev == null)
+                    || (level.equals("CRITICAL") && prev.equals("HIGH"))
+                    || (!prev.equals("HIGH") && !prev.equals("CRITICAL"));
 
-        Alert alert = Alert.builder()
-                .locationId(reading.getLocationId())
-                .alertType("THRESHOLD_EXCEEDED")
-                .message(message)
-                .crowdLevel(level)
-                .personCount(reading.getPersonCount())
-                .resolved(false)
-                .triggeredAt(Instant.now())
-                .build();
+            if (shouldAlert) {
+                Alert alert = Alert.builder()
+                        .locationId(locationId)
+                        .alertType("THRESHOLD_EXCEEDED")
+                        .message(String.format(
+                                "Crowd at %s has reached %s level (%d people detected)",
+                                locationId, level, reading.getPersonCount()))
+                        .crowdLevel(level)
+                        .personCount(reading.getPersonCount())
+                        .resolved(false)
+                        .triggeredAt(Instant.now())
+                        .build();
 
-        Alert saved = alertRepository.save(alert);
-        log.warn("[ALERT] {} — {}", level, message);
+                alertRepository.save(alert);
+                log.info("[ALERT] Created: {} at {}", level, locationId);
 
-        messagingTemplate.convertAndSend("/topic/alerts", saved);
-        notificationService.sendAlert(saved);
+                // WebSocket broadcast
+                try {
+                    messagingTemplate.convertAndSend("/topic/alerts", Map.of(
+                            "id", alert.getId() != null ? alert.getId() : "",
+                            "locationId", alert.getLocationId(),
+                            "alertType", alert.getAlertType(),
+                            "crowdLevel", alert.getCrowdLevel(),
+                            "message", alert.getMessage(),
+                            "triggeredAt", alert.getTriggeredAt().toString()));
+                } catch (Exception e) {
+                    log.warn("[ALERT] WebSocket broadcast failed: {}", e.getMessage());
+                }
+
+                // FCM notification
+                notificationService.sendAlert(alert);
+                lastAlertedLevel.put(locationId, level);
+            }
+        } else {
+            // Clear when crowd drops below HIGH
+            if (lastAlertedLevel.containsKey(locationId)) {
+                lastAlertedLevel.remove(locationId);
+                log.info("[ALERT] Crowd normalised at {}", locationId);
+            }
+        }
+    }
+
+    public List<Alert> getAllAlerts() {
+        return alertRepository.findTop50ByOrderByTriggeredAtDesc();
     }
 
     public List<Alert> getActiveAlerts() {
         return alertRepository.findByResolvedFalseOrderByTriggeredAtDesc();
     }
 
-    public List<Alert> getAllAlerts() {
-        return alertRepository.findAllByOrderByTriggeredAtDesc();
+    public List<Alert> getResolvedAlerts() {
+        return alertRepository.findByResolvedTrueOrderByTriggeredAtDesc();
     }
 
-    public Optional<Alert> resolveAlert(String alertId) {
-        return alertRepository.findById(alertId).map(alert -> {
-            alert.setResolved(true);
-            alert.setResolvedAt(Instant.now());
-            return alertRepository.save(alert);
-        });
+    public Alert resolveAlert(String id) {
+        Alert alert = alertRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Alert not found: " + id));
+        alert.setResolved(true);
+        alert.setResolvedAt(Instant.now());
+        return alertRepository.save(alert);
+    }
+
+    public Map<String, Long> getAlertStats() {
+        return Map.of(
+                "active", alertRepository.countByResolvedFalse(),
+                "resolved", alertRepository.countByResolvedTrue(),
+                "total", alertRepository.count());
     }
 }

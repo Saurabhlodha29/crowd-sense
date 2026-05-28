@@ -1,199 +1,156 @@
-import { useState, useEffect, useCallback } from "react";
-import crowdApi from "../api/crowdApi.js";
-import { useWebSocket } from "../hooks/useWebSocket.js";
-import { getCrowdConfig } from "../utils/crowdLevels.js";
-import { formatDateTime, timeAgo } from "../utils/formatters.js";
-import { AlertTriangle, CheckCircle, Bell, BellOff } from "lucide-react";
-import LoadingSpinner from "../components/LoadingSpinner.jsx";
+import { useState, useEffect } from "react";
+import { getAlerts, resolveAlert } from "../api/crowdApi";
+import { getCrowdConfig } from "../utils/crowdLevels";
+import { formatDateTime } from "../utils/formatters";
+import { Bell, CheckCircle, AlertTriangle } from "lucide-react";
+import { useWebSocket } from "../hooks/useWebSocket";
 
 export default function Alerts() {
-  const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all"); // all | active | resolved
-  const [resolving, setResolving] = useState(null);
+  const [alerts, setAlerts]     = useState([]);
+  const [filter, setFilter]     = useState("all");
+  const [loading, setLoading]   = useState(true);
+  const { latestAlert }         = useWebSocket();
 
-  useEffect(() => { fetchAlerts(); }, []);
-
-  async function fetchAlerts() {
+  function load() {
     setLoading(true);
-    try {
-      const res = await crowdApi.getAlerts();
-      setAlerts(res.data || []);
-    } catch { setAlerts([]); }
-    finally { setLoading(false); }
+    getAlerts(filter)
+      .then((r) => setAlerts(r.data || []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }
 
-  const onAlertUpdate = useCallback((newAlert) => {
-    setAlerts((prev) => {
-      const exists = prev.find((a) => a.id === newAlert.id);
-      if (exists) return prev.map((a) => a.id === newAlert.id ? newAlert : a);
-      return [newAlert, ...prev];
-    });
-  }, []);
+  useEffect(() => { load(); }, [filter]);
 
-  useWebSocket(null, onAlertUpdate);
+  // Auto-add new alert from WebSocket
+  useEffect(() => {
+    if (latestAlert) {
+      setAlerts((prev) => [latestAlert, ...prev]);
+    }
+  }, [latestAlert]);
 
-  async function resolve(id) {
-    setResolving(id);
+  async function handleResolve(id) {
     try {
-      await crowdApi.resolveAlert(id);
-      setAlerts((prev) => prev.map((a) => a.id === id ? { ...a, resolved: true } : a));
-    } catch (e) { console.error(e); }
-    finally { setResolving(null); }
+      await resolveAlert(id);
+      setAlerts((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, resolved: true } : a))
+      );
+    } catch (e) {
+      console.error("Resolve failed", e);
+    }
   }
 
-  const filtered = alerts.filter((a) => {
-    if (filter === "active") return !a.resolved;
-    if (filter === "resolved") return a.resolved;
-    return true;
+  const stats = {
+    active:   alerts.filter((a) => !a.resolved).length,
+    resolved: alerts.filter((a) => a.resolved).length,
+    total:    alerts.length,
+  };
+
+  const btnStyle = (active) => ({
+    padding: "6px 16px", borderRadius: 6, fontSize: 13, cursor: "pointer",
+    border: active ? "1px solid #3b82f6" : "1px solid #334155",
+    background: active ? "#1e3a5f" : "#1e293b",
+    color: active ? "#60a5fa" : "#94a3b8",
   });
 
-  const activeCount = alerts.filter((a) => !a.resolved).length;
-
-  if (loading) return <LoadingSpinner message="Loading alerts…" />;
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h2 style={styles.h2}>Alerts</h2>
-          {activeCount > 0 && (
-            <span style={styles.badge}>{activeCount} active</span>
-          )}
-        </div>
-        <div style={styles.filterRow}>
+    <div style={{ padding: 28 }}>
+      {/* Filter buttons */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <h2 style={{ margin: 0, color: "#f1f5f9", fontSize: 18, fontWeight: 600 }}>Alerts</h2>
+        <div style={{ display: "flex", gap: 8 }}>
           {["all", "active", "resolved"].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              style={{ ...styles.filterBtn, ...(filter === f ? styles.filterBtnActive : {}) }}
-            >
+            <button key={f} style={btnStyle(filter === f)} onClick={() => setFilter(f)}>
               {f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Summary */}
-      <div className="grid-3">
-        <SummaryCard icon={<Bell size={18} color="#ef4444" />} label="Active" value={alerts.filter(a => !a.resolved).length} color="#ef4444" />
-        <SummaryCard icon={<CheckCircle size={18} color="#22c55e" />} label="Resolved" value={alerts.filter(a => a.resolved).length} color="#22c55e" />
-        <SummaryCard icon={<AlertTriangle size={18} color="#f59e0b" />} label="Total" value={alerts.length} color="#f59e0b" />
+      {/* Stats */}
+      <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
+        {[
+          { label: "Active", value: stats.active, icon: Bell, color: "#f87171" },
+          { label: "Resolved", value: stats.resolved, icon: CheckCircle, color: "#34d399" },
+          { label: "Total", value: stats.total, icon: AlertTriangle, color: "#f59e0b" },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <div key={label} style={{
+            background: "#1e293b", borderRadius: 12, padding: "20px 28px",
+            border: "1px solid #334155", flex: 1,
+            display: "flex", alignItems: "center", gap: 16,
+          }}>
+            <Icon size={28} color={color} />
+            <div>
+              <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1 }}>{label}</div>
+              <div style={{ fontSize: 32, fontWeight: 700, color }}>{value}</div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Alert list */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {filtered.length === 0 ? (
-          <div className="card" style={{ textAlign: "center", padding: 40 }}>
-            <BellOff size={32} color="#2a3f5f" style={{ marginBottom: 12 }} />
-            <div style={{ color: "#4a5568", fontFamily: "'Space Mono', monospace", fontSize: 13 }}>
-              {filter === "active" ? "No active alerts — everything looks safe!" : "No alerts found."}
-            </div>
+      <div style={{
+        background: "#1e293b", borderRadius: 12, border: "1px solid #334155",
+        overflow: "hidden",
+      }}>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: "center", color: "#475569" }}>Loading alerts...</div>
+        ) : alerts.length === 0 ? (
+          <div style={{ padding: 60, textAlign: "center" }}>
+            <Bell size={40} color="#334155" style={{ marginBottom: 12 }} />
+            <div style={{ color: "#475569", fontFamily: "monospace" }}>No alerts found.</div>
           </div>
         ) : (
-          filtered.map((alert) => <AlertRow key={alert.id} alert={alert} onResolve={resolve} resolving={resolving} />)
+          alerts.map((alert, i) => {
+            const cfg = getCrowdConfig(alert.crowdLevel);
+            return (
+              <div key={alert.id || i} style={{
+                padding: "16px 24px",
+                borderBottom: i < alerts.length - 1 ? "1px solid #0f172a" : "none",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 16,
+                opacity: alert.resolved ? 0.6 : 1,
+              }}>
+                <div style={{
+                  width: 8, height: 8, borderRadius: "50%",
+                  background: alert.resolved ? "#334155" : cfg.color,
+                  marginTop: 6, flexShrink: 0,
+                }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                    <span style={{
+                      background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
+                      borderRadius: 12, padding: "2px 10px", fontSize: 11, fontWeight: 700,
+                    }}>
+                      {alert.crowdLevel}
+                    </span>
+                    <span style={{ fontSize: 12, color: "#64748b" }}>{alert.alertType}</span>
+                    {alert.resolved && (
+                      <span style={{ fontSize: 11, color: "#34d399", marginLeft: "auto" }}>✓ Resolved</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 13, color: "#e2e8f0", marginBottom: 4 }}>{alert.message}</div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>
+                    {formatDateTime(alert.triggeredAt)} · {alert.locationId}
+                  </div>
+                </div>
+                {!alert.resolved && (
+                  <button
+                    onClick={() => handleResolve(alert.id)}
+                    style={{
+                      background: "#0f172a", border: "1px solid #334155",
+                      color: "#34d399", borderRadius: 6,
+                      padding: "4px 12px", cursor: "pointer", fontSize: 12,
+                    }}
+                  >
+                    Resolve
+                  </button>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </div>
   );
 }
-
-function AlertRow({ alert, onResolve, resolving }) {
-  const { color, bg } = getCrowdConfig(alert.crowdLevel);
-  const isResolving = resolving === alert.id;
-
-  return (
-    <div
-      style={{
-        ...styles.row,
-        borderLeft: `3px solid ${alert.resolved ? "#2a3f5f" : color}`,
-        opacity: alert.resolved ? 0.6 : 1,
-      }}
-    >
-      <div style={styles.rowIcon}>
-        <AlertTriangle size={16} color={alert.resolved ? "#4a5568" : color} />
-      </div>
-      <div style={styles.rowBody}>
-        <div style={styles.rowTop}>
-          <span style={{ ...styles.levelTag, background: bg, color: alert.resolved ? "#4a5568" : color }}>
-            {alert.crowdLevel}
-          </span>
-          <span style={styles.alertType}>{alert.alertType?.replace("_", " ")}</span>
-          {alert.resolved && <span style={styles.resolvedTag}>✓ Resolved</span>}
-        </div>
-        <div style={styles.rowMsg}>{alert.message}</div>
-        <div style={styles.rowMeta}>
-          <span>{formatDateTime(alert.triggeredAt)}</span>
-          <span>·</span>
-          <span>{timeAgo(alert.triggeredAt)}</span>
-          <span>·</span>
-          <span>Loc: {alert.locationId}</span>
-          {alert.personCount && <><span>·</span><span>{alert.personCount} people</span></>}
-        </div>
-      </div>
-      {!alert.resolved && (
-        <button
-          onClick={() => onResolve(alert.id)}
-          disabled={isResolving}
-          style={{ ...styles.resolveBtn, opacity: isResolving ? 0.5 : 1 }}
-        >
-          <CheckCircle size={14} />
-          {isResolving ? "…" : "Resolve"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function SummaryCard({ icon, label, value, color }) {
-  return (
-    <div className="card" style={{ display: "flex", alignItems: "center", gap: 14 }}>
-      {icon}
-      <div>
-        <div style={{ color: "#4a5568", fontSize: 10, fontFamily: "'Space Mono', monospace", textTransform: "uppercase", letterSpacing: "0.1em" }}>{label}</div>
-        <div style={{ color, fontFamily: "'Space Mono', monospace", fontSize: 22, fontWeight: 700 }}>{value}</div>
-      </div>
-    </div>
-  );
-}
-
-const styles = {
-  h2: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 18, color: "#e8edf5" },
-  badge: {
-    background: "rgba(239,68,68,0.15)", color: "#ef4444",
-    fontFamily: "'Space Mono', monospace", fontSize: 11, fontWeight: 700,
-    padding: "3px 10px", borderRadius: 20,
-  },
-  filterRow: { display: "flex", gap: 4 },
-  filterBtn: {
-    background: "transparent", border: "1px solid #1e2d45",
-    borderRadius: 6, padding: "6px 14px", color: "#7a8ba0",
-    fontFamily: "'Space Mono', monospace", fontSize: 12, cursor: "pointer",
-  },
-  filterBtnActive: { background: "#1a2d45", color: "#3b82f6", borderColor: "#3b82f6" },
-  row: {
-    background: "#151d2e", border: "1px solid #1e2d45",
-    borderRadius: 10, padding: "14px 16px",
-    display: "flex", alignItems: "flex-start", gap: 12,
-    animation: "fade-in 0.25s ease",
-  },
-  rowIcon: { paddingTop: 2, flexShrink: 0 },
-  rowBody: { flex: 1, display: "flex", flexDirection: "column", gap: 4 },
-  rowTop: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  levelTag: {
-    fontSize: 10, fontFamily: "'Space Mono', monospace", fontWeight: 700,
-    padding: "2px 8px", borderRadius: 20, letterSpacing: "0.1em", textTransform: "uppercase",
-  },
-  alertType: { color: "#7a8ba0", fontSize: 11, fontFamily: "'Space Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em" },
-  resolvedTag: { color: "#22c55e", fontSize: 11, fontFamily: "'Space Mono', monospace" },
-  rowMsg: { color: "#c5cfe0", fontSize: 13, fontFamily: "'Space Mono', monospace" },
-  rowMeta: { display: "flex", gap: 6, color: "#4a5568", fontSize: 11, fontFamily: "'Space Mono', monospace", flexWrap: "wrap" },
-  resolveBtn: {
-    display: "flex", alignItems: "center", gap: 5,
-    background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)",
-    borderRadius: 6, padding: "6px 12px", color: "#22c55e",
-    fontFamily: "'Space Mono', monospace", fontSize: 11, cursor: "pointer",
-    flexShrink: 0,
-  },
-};

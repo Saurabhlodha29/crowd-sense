@@ -1,191 +1,142 @@
-import { useState, useCallback } from "react";
-import { useCrowdData } from "../hooks/useCrowdData.js";
-import { useWebSocket } from "../hooks/useWebSocket.js";
-import CrowdLevelCard from "../components/CrowdLevelCard.jsx";
-import CrowdChart from "../components/CrowdChart.jsx";
-import CrowdMap from "../components/CrowdMap.jsx";
-import AlertBanner from "../components/AlertBanner.jsx";
-import LoadingSpinner from "../components/LoadingSpinner.jsx";
-import crowdApi from "../api/crowdApi.js";
-
+import { useState, useEffect } from "react";
+import { useWebSocket } from "../hooks/useWebSocket";
+import { getLatestReadings, getLocations, getAlertStats } from "../api/crowdApi";
+import CrowdLevelCard from "../components/CrowdLevelCard";
+import AlertBanner from "../components/AlertBanner";
+import { getCrowdConfig } from "../utils/crowdLevels";
 
 export default function Dashboard() {
-  const { locationReadings, locations, alerts, loading, error, refetch, applyLiveUpdate } =
-    useCrowdData();
-  const [chartReadings, setChartReadings] = useState([]);
-  const [selectedLoc, setSelectedLoc] = useState(null);
-  const [chartLoading, setChartLoading] = useState(false);
-  const [resolvedIds, setResolvedIds] = useState(new Set());
+  const { latestCrowdUpdate, latestAlert } = useWebSocket();
+  const [readings, setReadings] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [alertStats, setAlertStats] = useState({ active: 0, total: 0 });
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const onCrowdUpdate = useCallback(
-    (data) => applyLiveUpdate(data),
-    [applyLiveUpdate]
-  );
-  const onAlertUpdate = useCallback(() => refetch(), [refetch]);
-  useWebSocket(onCrowdUpdate, onAlertUpdate);
-
-  async function loadChart(locId) {
-    setSelectedLoc(locId);
-    setChartLoading(true);
-    try {
-      const res = await crowdApi.getReadingsByLocation(locId, 120);
-      setChartReadings(res.data || []);
-    } catch {
-      setChartReadings([]);
-    } finally {
-      setChartLoading(false);
+  // Initial load
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoading(true);
+        const [rRes, lRes, aRes] = await Promise.all([
+          getLatestReadings(),
+          getLocations(),
+          getAlertStats(),
+        ]);
+        setReadings(rRes.data || []);
+        setLocations(lRes.data || []);
+        setAlertStats(aRes.data || { active: 0, total: 0 });
+        setError(null);
+      } catch (e) {
+        setError(e?.response?.data?.error || e.message || "Failed to load data");
+      } finally {
+        setLoading(false);
+      }
     }
+    load();
+  }, []);
+
+  // Live WebSocket updates
+  useEffect(() => {
+    if (!latestCrowdUpdate) return;
+    setReadings((prev) => {
+      const idx = prev.findIndex((r) => r.locationId === latestCrowdUpdate.locationId);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...latestCrowdUpdate };
+        return next;
+      }
+      return [...prev, latestCrowdUpdate];
+    });
+  }, [latestCrowdUpdate]);
+
+  function locationName(locationId) {
+    return locations.find((l) => l.id === locationId)?.name || locationId;
   }
 
-  function handleResolved(id) {
-    setResolvedIds((prev) => new Set([...prev, id]));
+  const totalPeople = readings.reduce((sum, r) => sum + (r.personCount || 0), 0);
+  const highestLevel = readings.reduce((acc, r) => {
+    const order = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
+    return (order[r.crowdLevel] || 0) > (order[acc] || 0) ? r.crowdLevel : acc;
+  }, "LOW");
+
+  if (loading) {
+    return (
+      <div style={{ padding: 40, color: "#94a3b8", textAlign: "center" }}>
+        Loading dashboard...
+      </div>
+    );
   }
 
-  const visibleAlerts = alerts.filter((a) => !resolvedIds.has(a.id));
-  const locMap = Object.fromEntries(locations.map((l) => [l.id, l]));
-  const selectedLocName = selectedLoc ? locMap[selectedLoc]?.name : "";
-
-  if (loading) return <LoadingSpinner message="Loading dashboard…" />;
-  if (error) return <ErrorState message={error} onRetry={refetch} />;
-
-  const locationList = locations.length
-    ? locations
-    : Object.keys(locationReadings).map((id) => ({ id, name: id }));
+  if (error) {
+    return (
+      <div style={{ padding: 40, textAlign: "center" }}>
+        <div style={{ color: "#f87171", fontFamily: "monospace", marginBottom: 16 }}>
+          ⚠ {error}
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            background: "#3b82f6", color: "#fff", border: "none",
+            borderRadius: 8, padding: "10px 24px", cursor: "pointer", fontSize: 14,
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      {/* Active Alerts */}
-      <AlertBanner alerts={visibleAlerts} onResolved={handleResolved} />
+    <div style={{ padding: 28 }}>
+      <AlertBanner alert={latestAlert} />
 
-      {/* Summary Cards */}
-      <section>
-        <SectionLabel>Live Status</SectionLabel>
-        <div className="grid-4" style={{ marginTop: 10 }}>
-          {locationList.map((loc) => (
-            <div
-              key={loc.id}
-              onClick={() => loadChart(loc.id)}
-              style={{ cursor: "pointer", outline: selectedLoc === loc.id ? "2px solid #3b82f6" : "none", borderRadius: 12 }}
-            >
-              <CrowdLevelCard
-                locationName={loc.name}
-                reading={locationReadings[loc.id]}
-              />
+      {/* Summary stat cards */}
+      <div style={{ display: "flex", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
+        {[
+          { label: "Monitored Locations", value: locations.length, color: "#60a5fa" },
+          { label: "Total People (now)", value: totalPeople, color: "#34d399" },
+          { label: "Active Alerts",      value: alertStats.active, color: "#f87171" },
+          { label: "Highest Level",      value: highestLevel, color: getCrowdConfig(highestLevel).color },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{
+            background: "#1e293b", borderRadius: 12, padding: "18px 24px",
+            border: "1px solid #334155", flex: "1 1 160px",
+          }}>
+            <div style={{ fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
+              {label}
             </div>
+            <div style={{ fontSize: 32, fontWeight: 700, color }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-location crowd cards */}
+      {readings.length === 0 ? (
+        <div style={{
+          background: "#1e293b", borderRadius: 12, padding: 40,
+          textAlign: "center", color: "#475569", fontSize: 14,
+          border: "1px solid #334155",
+        }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
+          No readings yet. Start the sensor agent to begin collecting data.
+          <div style={{ fontFamily: "monospace", marginTop: 12, fontSize: 12, color: "#1d4ed8" }}>
+            cd edge && python sensor_agent.py
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          {readings.map((r) => (
+            <CrowdLevelCard
+              key={r.locationId || r.id}
+              locationName={locationName(r.locationId)}
+              personCount={r.personCount}
+              crowdLevel={r.crowdLevel}
+              capturedAt={r.capturedAt}
+            />
           ))}
-          {!locationList.length && (
-            <div style={styles.noLocs}>
-              No locations found. Add one in <b>Locations</b> tab or start the sensor agent.
-            </div>
-          )}
         </div>
-      </section>
-
-      {/* Chart + Map */}
-      <div style={styles.bottomRow}>
-        {/* Chart */}
-        <div className="card" style={{ flex: 2, minWidth: 0 }}>
-          <div style={styles.cardHeader}>
-            <span style={styles.cardTitle}>
-              {selectedLocName ? `${selectedLocName} — Trend` : "Select a location card to view chart"}
-            </span>
-            {selectedLoc && (
-              <button onClick={() => loadChart(selectedLoc)} style={styles.refreshBtn}>↻ Refresh</button>
-            )}
-          </div>
-          <div style={{ height: 260, marginTop: 12 }}>
-            {chartLoading ? (
-              <LoadingSpinner message="Loading chart…" />
-            ) : (
-              <CrowdChart readings={chartReadings} locationName={selectedLocName} />
-            )}
-          </div>
-        </div>
-
-        {/* Map */}
-        <div className="card" style={{ flex: 1.2, minWidth: 280 }}>
-          <div style={styles.cardHeader}>
-            <span style={styles.cardTitle}>Live Map</span>
-          </div>
-          <div style={{ height: 260, marginTop: 12 }}>
-            <CrowdMap locations={locations} locationReadings={locationReadings} />
-          </div>
-        </div>
-      </div>
-
-      {/* Stats row */}
-      <div className="grid-3">
-        <StatCard
-          label="Locations Monitored"
-          value={locationList.length}
-          unit="sites"
-          color="#3b82f6"
-        />
-        <StatCard
-          label="Active Alerts"
-          value={visibleAlerts.filter((a) => !a.resolved).length}
-          unit="unresolved"
-          color="#ef4444"
-        />
-        <StatCard
-          label="Critical Zones"
-          value={Object.values(locationReadings).filter((r) => r.crowdLevel === "CRITICAL").length}
-          unit="locations"
-          color="#f97316"
-        />
-      </div>
+      )}
     </div>
   );
 }
-
-function SectionLabel({ children }) {
-  return (
-    <div style={{
-      fontFamily: "'Space Mono', monospace", fontSize: 11,
-      color: "#4a5568", letterSpacing: "0.12em",
-      textTransform: "uppercase", paddingBottom: 2,
-    }}>
-      {children}
-    </div>
-  );
-}
-
-function StatCard({ label, value, unit, color }) {
-  return (
-    <div className="card" style={{ borderTop: `2px solid ${color}` }}>
-      <div style={{ color: "#7a8ba0", fontSize: 11, fontFamily: "'Space Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 8 }}>
-        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 28, fontWeight: 700, color }}>{value}</span>
-        <span style={{ color: "#4a5568", fontSize: 12 }}>{unit}</span>
-      </div>
-    </div>
-  );
-}
-
-function ErrorState({ message, onRetry }) {
-  return (
-    <div style={{ padding: 40, textAlign: "center" }}>
-      <div style={{ color: "#ef4444", fontSize: 14, marginBottom: 12, fontFamily: "'Space Mono', monospace" }}>
-        ⚠ {message}
-      </div>
-      <button onClick={onRetry} style={{ background: "#3b82f6", color: "#fff", border: "none", borderRadius: 6, padding: "8px 20px", cursor: "pointer", fontFamily: "'Space Mono', monospace" }}>
-        Retry
-      </button>
-    </div>
-  );
-}
-
-const styles = {
-  bottomRow: { display: "flex", gap: 16, flexWrap: "wrap" },
-  cardHeader: { display: "flex", alignItems: "center", justifyContent: "space-between" },
-  cardTitle: { fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 14, color: "#c5cfe0" },
-  refreshBtn: {
-    background: "transparent", border: "1px solid #1e2d45",
-    borderRadius: 6, padding: "4px 10px", color: "#7a8ba0",
-    fontSize: 12, cursor: "pointer", fontFamily: "'Space Mono', monospace",
-  },
-  noLocs: {
-    gridColumn: "1 / -1", color: "#4a5568",
-    fontFamily: "'Space Mono', monospace", fontSize: 13, padding: 20,
-  },
-};

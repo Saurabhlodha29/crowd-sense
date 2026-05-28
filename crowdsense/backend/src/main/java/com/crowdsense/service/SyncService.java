@@ -12,20 +12,19 @@ public class SyncService {
 
     private final CrowdReadingService crowdReadingService;
 
-    public int processBulkSync(BulkSyncDTO dto) {
-        if (dto.getReadings() == null || dto.getReadings().isEmpty()) {
+    public int bulkSync(BulkSyncDTO dto) {
+        if (dto.getReadings() == null || dto.getReadings().isEmpty())
             return 0;
-        }
         int count = 0;
-        for (var reading : dto.getReadings()) {
+        for (var r : dto.getReadings()) {
             try {
-                crowdReadingService.saveReading(reading);
+                crowdReadingService.saveReading(r);
                 count++;
             } catch (Exception e) {
-                log.error("[SYNC] Failed to save reading: {}", e.getMessage());
+                log.error("[SYNC] Failed to save reading for {}: {}", r.getLocationId(), e.getMessage());
             }
         }
-        log.info("[SYNC] Bulk synced {} readings", count);
+        log.info("[SYNC] Bulk synced {} / {} readings", count, dto.getReadings().size());
         return count;
     }
 }

@@ -1,48 +1,42 @@
 import requests
 from local_db import get_unsynced_readings, mark_synced
 from config import BACKEND_URL
-import time
 
-def check_internet():
+def check_internet(timeout: int = 3) -> bool:
     try:
-        # FIX: correct health endpoint is /readings/health, not /health
-        response = requests.get(BACKEND_URL + "/readings/health", timeout=3)
-        return response.status_code == 200
+        requests.get(f"{BACKEND_URL}/readings/health", timeout=timeout)
+        return True
     except Exception:
         return False
 
 def sync_buffered_data():
     if not check_internet():
-        print("[SYNC] Offline — skipping sync.")
-        return
+        print("[SYNC] Offline — data safely buffered in SQLite")
+        return 0
 
     unsynced = get_unsynced_readings()
     if not unsynced:
-        return
+        return 0
 
-    # Convert SQLite row dicts to the DTO format the backend expects
-    readings_payload = []
+    payload = {"readings": []}
     for r in unsynced:
-        readings_payload.append({
+        payload["readings"].append({
             "locationId":  r["location_id"],
             "personCount": r["person_count"],
             "crowdLevel":  r["crowd_level"],
             "confidence":  r["confidence"],
-            "capturedAt":  r["captured_at"],
+            "capturedAt":  r["captured_at"]
         })
 
-    payload = {"readings": readings_payload}
     try:
-        response = requests.post(
-            BACKEND_URL + "/sync/bulk",
-            json=payload,
-            timeout=10
-        )
-        if response.status_code == 200:
+        resp = requests.post(f"{BACKEND_URL}/sync/bulk", json=payload, timeout=15)
+        if resp.status_code == 200:
             ids = [r["id"] for r in unsynced]
             mark_synced(ids)
-            print(f"[SYNC] Synced {len(ids)} records.")
+            print(f"[SYNC] ✓ Synced {len(ids)} buffered records to backend")
+            return len(ids)
         else:
-            print(f"[SYNC] Server error: {response.status_code} — {response.text[:200]}")
+            print(f"[SYNC] Server returned {resp.status_code}: {resp.text[:200]}")
     except Exception as e:
         print(f"[SYNC] Failed: {e}")
+    return 0

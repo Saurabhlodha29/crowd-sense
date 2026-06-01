@@ -39,13 +39,14 @@ public class AuthController {
         return userRepo.findByEmail(email)
                 .filter(u -> passwordEncoder.matches(password, u.getPasswordHash()))
                 .map(u -> {
-                    String token = jwtUtil.generateToken(u.getEmail(), u.getRole(), u.getId());
+                    String userId = u.getId().toString();
+                    String token = jwtUtil.generateToken(u.getEmail(), u.getRole(), userId);
                     log.info("[AUTH] Login: {} ({})", u.getEmail(), u.getRole());
                     return ResponseEntity.ok(Map.of(
                             "token", token,
                             "email", u.getEmail(),
                             "role", u.getRole(),
-                            "userId", u.getId(),
+                            "userId", userId,
                             "name", u.getName() != null ? u.getName() : u.getEmail()));
                 })
                 .orElseGet(() -> {
@@ -83,14 +84,15 @@ public class AuthController {
                 .build();
         User saved = userRepo.save(user);
 
-        String token = jwtUtil.generateToken(saved.getEmail(), saved.getRole(), saved.getId());
+        String userId = saved.getId().toString();
+        String token = jwtUtil.generateToken(saved.getEmail(), saved.getRole(), userId);
         log.info("[AUTH] Registered: {} ({})", saved.getEmail(), saved.getRole());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 "token", token,
                 "email", saved.getEmail(),
                 "role", saved.getRole(),
-                "userId", saved.getId()));
+                "userId", userId));
     }
 
     // ── GET /auth/me ──────────────────────────────────────────────────────────
@@ -105,7 +107,7 @@ public class AuthController {
                 .map(u -> ResponseEntity.ok(Map.of(
                         "email", u.getEmail(),
                         "role", u.getRole(),
-                        "userId", u.getId(),
+                        "userId", u.getId().toString(),
                         "name", u.getName() != null ? u.getName() : u.getEmail())))
                 .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(Map.of("message", "User not found")));

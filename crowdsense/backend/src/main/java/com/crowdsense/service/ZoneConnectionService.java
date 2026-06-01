@@ -17,7 +17,7 @@ public class ZoneConnectionService {
     private final ZoneConnectionRepository repo;
 
     public List<ZoneConnection> getByEvent(String eventId) {
-        return repo.findByEventId(eventId);
+        return repo.findByEventId(UUID.fromString(eventId));
     }
 
     public ZoneConnection create(ZoneConnection conn) {
@@ -36,7 +36,7 @@ public class ZoneConnectionService {
      * Used by RouteService to pass the graph to the ML service.
      */
     public Map<String, List<Map<String, Object>>> buildGraph(String eventId) {
-        List<ZoneConnection> connections = repo.findByEventId(eventId);
+        List<ZoneConnection> connections = repo.findByEventId(UUID.fromString(eventId));
         Map<String, List<Map<String, Object>>> graph = new HashMap<>();
 
         for (ZoneConnection c : connections) {
@@ -57,6 +57,7 @@ public class ZoneConnectionService {
      */
     public List<ZoneConnection> autoConnect(String eventId,
             List<com.crowdsense.model.Location> zones) {
+        UUID parsedEventId = UUID.fromString(eventId);
         List<ZoneConnection> created = new ArrayList<>();
         for (int i = 0; i < zones.size(); i++) {
             for (int j = i + 1; j < zones.size(); j++) {
@@ -68,7 +69,7 @@ public class ZoneConnectionService {
                 // Only connect zones within 300m of each other
                 if (distM <= 300) {
                     ZoneConnection conn = ZoneConnection.builder()
-                            .eventId(eventId)
+                            .eventId(parsedEventId)
                             .fromZoneId(a.getId())
                             .toZoneId(b.getId())
                             .distanceM((double) Math.round(distM))

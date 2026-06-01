@@ -55,7 +55,8 @@ public class EventService {
     }
 
     public Optional<Map<String, Object>> getDetail(String id) {
-        return eventRepo.findById(id).map(event -> {
+        UUID eventId = UUID.fromString(id);
+        return eventRepo.findById(eventId).map(event -> {
             List<Location> zones = locationRepo.findByEventIdAndIsActiveTrue(id);
             List<CrowdReading> latest = readingRepo.findLatestPerLocationByEventId(id);
 
@@ -103,7 +104,7 @@ public class EventService {
     }
 
     public Optional<Event> update(String id, EventDTO dto, String organizerEmail) {
-        return eventRepo.findById(id).map(existing -> {
+        return eventRepo.findById(UUID.fromString(id)).map(existing -> {
             if (dto.getName() != null)
                 existing.setName(dto.getName());
             if (dto.getDescription() != null)
@@ -136,14 +137,14 @@ public class EventService {
         Set<String> valid = Set.of("DRAFT", "LIVE", "ENDED");
         if (!valid.contains(newStatus))
             throw new IllegalArgumentException("Invalid status: " + newStatus);
-        return eventRepo.findById(id).map(e -> {
+        return eventRepo.findById(UUID.fromString(id)).map(e -> {
             e.setStatus(newStatus);
             return eventRepo.save(e);
         });
     }
 
     public void deactivate(String id, String email) {
-        eventRepo.findById(id).ifPresent(e -> {
+        eventRepo.findById(UUID.fromString(id)).ifPresent(e -> {
             e.setIsActive(false);
             e.setStatus("ENDED");
             eventRepo.save(e);

@@ -3,6 +3,7 @@ package com.crowdsense.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import java.util.UUID;
 
 @Entity
 @Table(name = "stalls")
@@ -17,7 +18,7 @@ public class Stall {
     private String id;
 
     @Column(name = "event_id", nullable = false)
-    private String eventId;
+    private UUID eventId;
 
     @Column(name = "zone_id")
     private String zoneId;

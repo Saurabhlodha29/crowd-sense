@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -18,18 +19,18 @@ public class StallService {
     private final StallRepository stallRepo;
 
     public List<Stall> getByEvent(String eventId) {
-        return stallRepo.findByEventIdAndIsActiveTrue(eventId);
+        return stallRepo.findByEventIdAndIsActiveTrue(UUID.fromString(eventId));
     }
 
     public List<Stall> getByEventAndCategory(String eventId, String category) {
         if (category == null || category.isBlank()) {
             return getByEvent(eventId);
         }
-        return stallRepo.findByEventIdAndCategoryAndIsActiveTrue(eventId, category);
+        return stallRepo.findByEventIdAndCategoryAndIsActiveTrue(UUID.fromString(eventId), category);
     }
 
     public Stall create(String eventId, Stall stall) {
-        stall.setEventId(eventId);
+        stall.setEventId(UUID.fromString(eventId));
         stall.setIsActive(true);
         if (stall.getRating() == null)
             stall.setRating(0.0);

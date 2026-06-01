@@ -89,7 +89,8 @@ public class RouteService {
         payload.put("crowd_data", buildCrowdSnapshot(eventId));
 
         // Attach stall list so ML can rank without its own DB
-        List<Map<String, Object>> stalls = stallRepo.findByEventIdAndIsActiveTrue(eventId)
+        UUID parsedEventId = UUID.fromString(eventId);
+        List<Map<String, Object>> stalls = stallRepo.findByEventIdAndIsActiveTrue(parsedEventId)
                 .stream()
                 .map(s -> {
                     Map<String, Object> m = new HashMap<>();
@@ -135,7 +136,7 @@ public class RouteService {
 
     /** Zone graph: zone_id → [{neighbor_id, distance_m}] */
     private Map<String, List<Map<String, Object>>> buildZoneGraph(String eventId) {
-        var connections = zoneConnRepo.findByEventId(eventId);
+        var connections = zoneConnRepo.findByEventId(UUID.fromString(eventId));
         Map<String, List<Map<String, Object>>> graph = new HashMap<>();
         for (var c : connections) {
             graph.computeIfAbsent(c.getFromZoneId(), k -> new ArrayList<>())

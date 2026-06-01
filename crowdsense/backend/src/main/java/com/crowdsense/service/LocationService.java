@@ -73,4 +73,5 @@ public class LocationService {
             repository.save(loc);
         });
     }
+
 }

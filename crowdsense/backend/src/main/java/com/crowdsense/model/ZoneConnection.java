@@ -4,6 +4,7 @@ package com.crowdsense.model;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "zone_connections", uniqueConstraints = @UniqueConstraint(columnNames = { "event_id", "from_zone_id",
@@ -19,7 +20,7 @@ public class ZoneConnection {
     private String id;
 
     @Column(name = "event_id", nullable = false)
-    private String eventId;
+    private UUID eventId;
 
     @Column(name = "from_zone_id", nullable = false)
     private String fromZoneId;

@@ -10,16 +10,17 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.UUID;
 
 @Repository
-public interface EventRepository extends JpaRepository<Event, String> {
+public interface EventRepository extends JpaRepository<Event, UUID> {
 
     Page<Event> findByStatusAndIsActiveTrueAndIsPublicTrue(String status, Pageable pageable);
 
     Page<Event> findByStatusAndIsActiveTrueAndIsPublicTrueAndCityContainingIgnoreCase(
             String status, String city, Pageable pageable);
 
-    List<Event> findByOrganizerIdAndIsActiveTrue(String organizerId);
+    List<Event> findByOrganizerIdAndIsActiveTrue(UUID organizerId);
 
     /**
      * Full-text search with optional city filter (no geo).

@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -87,7 +88,7 @@ public class DataInitializer implements CommandLineRunner {
         if (organizer.isEmpty())
             return;
 
-        String orgId = organizer.get().getId();
+        UUID orgId = organizer.get().getId();
 
         boolean hasEvents = !eventRepo.findByOrganizerIdAndIsActiveTrue(orgId).isEmpty();
         if (hasEvents)
@@ -119,7 +120,7 @@ public class DataInitializer implements CommandLineRunner {
                     .longitude(77.2295)
                     .description("Primary performance zone")
                     .maxCapacity(250)
-                    .eventId(event.getId())
+                    .eventId(event.getId().toString())
                     .isActive(true)
                     .build());
         }
@@ -133,7 +134,7 @@ public class DataInitializer implements CommandLineRunner {
                     .longitude(77.2300)
                     .description("Food & beverage stall area")
                     .maxCapacity(150)
-                    .eventId(event.getId())
+                    .eventId(event.getId().toString())
                     .isActive(true)
                     .build());
         }
@@ -147,7 +148,7 @@ public class DataInitializer implements CommandLineRunner {
                     .longitude(77.2290)
                     .description("Main entry and ticketing zone")
                     .maxCapacity(80)
-                    .eventId(event.getId())
+                    .eventId(event.getId().toString())
                     .isActive(true)
                     .build());
         }

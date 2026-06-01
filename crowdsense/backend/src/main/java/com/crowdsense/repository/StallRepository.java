@@ -6,13 +6,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.UUID;
 
 @Repository
 public interface StallRepository extends JpaRepository<Stall, String> {
 
-    List<Stall> findByEventIdAndIsActiveTrue(String eventId);
+    List<Stall> findByEventIdAndIsActiveTrue(UUID eventId);
 
-    List<Stall> findByEventIdAndCategoryAndIsActiveTrue(String eventId, String category);
+    List<Stall> findByEventIdAndCategoryAndIsActiveTrue(UUID eventId, String category);
 
     List<Stall> findByZoneId(String zoneId);
 

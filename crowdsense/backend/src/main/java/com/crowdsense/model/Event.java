@@ -4,6 +4,7 @@ package com.crowdsense.model;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "events")
@@ -15,10 +16,10 @@ public class Event {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    private String id;
+    private UUID id;
 
     @Column(name = "organizer_id", nullable = false)
-    private String organizerId;
+    private UUID organizerId;
 
     @Column(nullable = false)
     private String name;

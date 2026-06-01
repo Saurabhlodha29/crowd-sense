@@ -1,69 +1,112 @@
 # edge/wifi_probe.py
+# WiFi probe crowd counter.
+#
+# REAL MODE (Raspberry Pi):
+#   Uses Scapy to passively sniff 802.11 probe requests.
+#   Counts unique MAC addresses in a sliding 60-second window.
+#   Applies RSSI-based zone estimation and device-to-person correction factor.
+#
+# SIMULATION MODE (Laptop):
+#   CorrelatedWiFiSimulator generates counts that track the camera count
+#   with realistic noise, so the fusion engine has believable inputs.
+
 import time
-import random
-from datetime import datetime
+import hashlib
+import logging
+import threading
+from config import SENSOR_MODE
 
-try:
-    from simulation_engine import get_time_based_count
-except ImportError:
-    def get_time_based_count(): return random.randint(5, 80)
+logger = logging.getLogger(__name__)
 
-def simulate_probe_reading(location_id="loc_001"):
+
+# ── Real probe (Raspberry Pi with WiFi adapter in monitor mode) ───────────────
+
+class RealWiFiProbe:
+    WINDOW_SECONDS = 60
+    CORRECTION_CLOSE = 0.80   # MACs with RSSI > -60 dBm (within ~10 m)
+    CORRECTION_FAR   = 0.60   # MACs with RSSI ≤ -60 dBm (farther away)
+
+    def __init__(self, interface: str = "wlan1"):
+        self.interface = interface
+        self._mac_timestamps: dict = {}
+        self._mac_rssi:       dict = {}
+        self._lock = threading.Lock()
+
+    def start(self):
+        from scapy.all import sniff, Dot11
+        logger.info(f"[WIFI] Starting probe on {self.interface}")
+        threading.Thread(
+            target=lambda: sniff(
+                iface=self.interface,
+                prn=self._process_packet,
+                store=False,
+            ),
+            daemon=True,
+        ).start()
+
+    def _process_packet(self, pkt):
+        from scapy.all import Dot11
+        if pkt.haslayer(Dot11):
+            mac = pkt.addr2
+            if not mac or mac == "ff:ff:ff:ff:ff:ff":
+                return
+            # Anonymise: SHA-256 → first 12 hex chars
+            anon = hashlib.sha256(mac.encode()).hexdigest()[:12]
+            with self._lock:
+                self._mac_timestamps[anon] = time.time()
+                if hasattr(pkt, "dBm_AntSignal"):
+                    self._mac_rssi[anon] = pkt.dBm_AntSignal
+
+    def get_count(self) -> tuple:
+        """Returns (corrected_person_estimate, raw_mac_count)."""
+        cutoff = time.time() - self.WINDOW_SECONDS
+        with self._lock:
+            active = {m: t for m, t in self._mac_timestamps.items() if t > cutoff}
+
+        close = sum(1 for m in active if self._mac_rssi.get(m, -100) > -60)
+        far   = len(active) - close
+
+        corrected = int(close * self.CORRECTION_CLOSE + far * self.CORRECTION_FAR)
+        return corrected, len(active)
+
+
+# ── Simulation probe ──────────────────────────────────────────────────────────
+
+class CorrelatedWiFiSimulator:
     """
-    Simulates WiFi probe crowd counting.
-    In production: replace body with real Scapy sniffing (see commented block below).
-    
-    Why 0.7x correction: Modern iPhones randomize their MAC address, so one phone
-    can appear as ~1.4 unique MACs over a 60-second window. We divide by 1.4 (multiply
-    by 0.7) to correct for this inflation.
+    Generates WiFi MAC counts that CORRELATE with a given camera count series.
+    Not random — follows the same crowd pattern with ±10 % noise.
+    Makes the fusion engine receive believable, correlated inputs.
     """
-    base_count = get_time_based_count()
-    detected_macs = int(base_count * random.uniform(0.85, 1.15))
-    corrected_count = int(detected_macs * 0.7)
-    return {
-        "source":          "wifi_probe_simulated",
-        "location_id":     location_id,
-        "unique_macs":     detected_macs,
-        "corrected_count": corrected_count,
-        "window_seconds":  60,
-        "timestamp":       datetime.utcnow().isoformat() + "Z"
-    }
 
-# ── PRODUCTION MODE — uncomment on Raspberry Pi only ──────────────────────────
-# Requires: pip install scapy | Must run as root: sudo python wifi_probe.py
-# WiFi adapter must be in monitor mode: sudo iwconfig wlan1 mode monitor
-#
-# from scapy.all import sniff, Dot11ProbeReq
-# import threading
-#
-# _mac_window = {}
-# _lock = threading.Lock()
-#
-# def _handle_probe(pkt):
-#     if pkt.haslayer(Dot11ProbeReq) and pkt.addr2:
-#         with _lock:
-#             _mac_window[pkt.addr2] = time.time()
-#
-# def _clean_window(seconds=60):
-#     cutoff = time.time() - seconds
-#     with _lock:
-#         for mac in [m for m, t in _mac_window.items() if t < cutoff]:
-#             del _mac_window[mac]
-#
-# def get_probe_count():
-#     _clean_window()
-#     with _lock: return len(_mac_window)
-#
-# def start_sniffing(interface="wlan1mon"):
-#     sniff(iface=interface, prn=_handle_probe, store=False)
-# ───────────────────────────────────────────────────────────────────────────────
+    # Approx fraction of people detectable via WiFi probes
+    # (some have WiFi off, some have 2 devices, etc.)
+    DETECTION_RATIO = 0.42
 
-if __name__ == "__main__":
-    print("[WiFi Probe] Simulation mode | Ctrl+C to stop\n")
-    try:
-        while True:
-            r = simulate_probe_reading()
-            print(f"[PROBE] MACs: {r['unique_macs']:3d} | Corrected: {r['corrected_count']:3d} people | {r['timestamp']}")
-            time.sleep(10)
-    except KeyboardInterrupt:
-        print("\n[PROBE] Stopped.")
+    def __init__(self):
+        self._last_camera_count = 0
+
+    def update_reference(self, camera_count: int):
+        """Feed latest camera estimate so WiFi stays correlated."""
+        self._last_camera_count = camera_count
+
+    def get_count(self) -> tuple:
+        import random
+        base = self._last_camera_count * self.DETECTION_RATIO
+        # ±3 device noise + 0–5 passers-by outside camera frame
+        raw_macs = max(0, int(base + random.gauss(0, 3) + random.randint(0, 5)))
+        corrected = max(0, int(raw_macs / self.DETECTION_RATIO))
+        return corrected, raw_macs
+
+
+# ── Factory ───────────────────────────────────────────────────────────────────
+
+def create_wifi_probe(interface: str = "wlan1"):
+    """Return the appropriate probe for the current sensor mode."""
+    if SENSOR_MODE == "LIVE":
+        probe = RealWiFiProbe(interface=interface)
+        probe.start()
+        return probe
+    else:
+        logger.info("[WIFI] Using correlated simulation probe.")
+        return CorrelatedWiFiSimulator()

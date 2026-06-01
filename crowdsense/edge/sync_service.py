@@ -1,42 +1,55 @@
+# edge/sync_service.py
+# Bulk-uploads unsynced SQLite rows to the backend when internet is available.
+
+import logging
 import requests
 from local_db import get_unsynced_readings, mark_synced
 from config import BACKEND_URL
 
-def check_internet(timeout: int = 3) -> bool:
+logger = logging.getLogger(__name__)
+
+
+def check_internet() -> bool:
     try:
-        requests.get(f"{BACKEND_URL}/readings/health", timeout=timeout)
-        return True
+        r = requests.get(f"{BACKEND_URL}/readings/health", timeout=3)
+        return r.status_code == 200
     except Exception:
         return False
 
+
 def sync_buffered_data():
     if not check_internet():
-        print("[SYNC] Offline — data safely buffered in SQLite")
-        return 0
+        logger.debug("[SYNC] Offline — skipping.")
+        return
 
-    unsynced = get_unsynced_readings()
-    if not unsynced:
-        return 0
+    rows = get_unsynced_readings()
+    if not rows:
+        return
 
-    payload = {"readings": []}
-    for r in unsynced:
-        payload["readings"].append({
+    # Map SQLite column names → DTO field names expected by Spring Boot
+    payload_readings = []
+    for r in rows:
+        payload_readings.append({
             "locationId":  r["location_id"],
             "personCount": r["person_count"],
             "crowdLevel":  r["crowd_level"],
-            "confidence":  r["confidence"],
-            "capturedAt":  r["captured_at"]
+            "confidence":  r.get("confidence"),
+            "capturedAt":  r["captured_at"],
+            "source":      r.get("source", "HYBRID"),
+            "positions":   r.get("positions", []),
         })
 
     try:
-        resp = requests.post(f"{BACKEND_URL}/sync/bulk", json=payload, timeout=15)
-        if resp.status_code == 200:
-            ids = [r["id"] for r in unsynced]
+        response = requests.post(
+            f"{BACKEND_URL}/sync/bulk",
+            json={"readings": payload_readings},
+            timeout=30,
+        )
+        if response.status_code == 200:
+            ids = [r["id"] for r in rows]
             mark_synced(ids)
-            print(f"[SYNC] ✓ Synced {len(ids)} buffered records to backend")
-            return len(ids)
+            logger.info(f"[SYNC] ✓  Uploaded {len(ids)} buffered readings.")
         else:
-            print(f"[SYNC] Server returned {resp.status_code}: {resp.text[:200]}")
+            logger.warning(f"[SYNC] Server error: {response.status_code} {response.text[:200]}")
     except Exception as e:
-        print(f"[SYNC] Failed: {e}")
-    return 0
+        logger.warning(f"[SYNC] Request failed: {e}")

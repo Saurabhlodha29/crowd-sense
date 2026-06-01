@@ -1,3 +1,4 @@
+// backend/src/main/java/com/crowdsense/model/Location.java
 package com.crowdsense.model;
 
 import jakarta.persistence.*;
@@ -32,14 +33,24 @@ public class Location {
     @Column(name = "is_active")
     private Boolean isActive = true;
 
+    /** UUID of the event this zone belongs to. NULL for standalone sensors. */
+    @Column(name = "event_id")
+    private String eventId;
+
+    /**
+     * GeoJSON FeatureCollection string storing the drawn polygon boundary.
+     * Example: {"type":"Polygon","coordinates":[[[lng,lat],...,[lng,lat]]]}
+     * Stored as TEXT in PostgreSQL; PostGIS queries use native SQL.
+     */
+    @Column(name = "boundary_geojson", columnDefinition = "TEXT")
+    private String boundaryGeoJson;
+
     @Column(name = "created_at")
     private Instant createdAt;
 
     @PrePersist
     public void prePersist() {
-        if (this.createdAt == null)
-            this.createdAt = Instant.now();
-        if (this.isActive == null)
-            this.isActive = true;
+        if (createdAt == null)
+            createdAt = Instant.now();
     }
 }

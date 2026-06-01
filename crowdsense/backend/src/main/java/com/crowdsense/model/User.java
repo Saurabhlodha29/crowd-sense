@@ -1,3 +1,4 @@
+// backend/src/main/java/com/crowdsense/model/User.java
 package com.crowdsense.model;
 
 import jakarta.persistence.*;
@@ -22,17 +23,19 @@ public class User {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
-    @Builder.Default
-    private String role = "ADMIN";
+    /** ADMIN | ORGANIZER | ATTENDEE */
+    private String role = "ATTENDEE";
+
+    private String name;
 
     @Column(name = "created_at")
     private Instant createdAt;
 
     @PrePersist
     public void prePersist() {
-        if (this.createdAt == null)
-            this.createdAt = Instant.now();
-        if (this.role == null)
-            this.role = "ADMIN";
+        if (createdAt == null)
+            createdAt = Instant.now();
+        if (role == null)
+            role = "ATTENDEE";
     }
 }

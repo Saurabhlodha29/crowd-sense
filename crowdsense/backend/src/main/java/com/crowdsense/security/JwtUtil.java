@@ -1,3 +1,4 @@
+// backend/src/main/java/com/crowdsense/security/JwtUtil.java
 package com.crowdsense.security;
 
 import io.jsonwebtoken.*;
@@ -15,44 +16,52 @@ import java.util.Date;
 public class JwtUtil {
 
     @Value("${jwt.secret}")
-    private String secret;
+    private String secretHex;
 
-    @Value("${jwt.expiration.ms}")
+    @Value("${jwt.expiration.ms:86400000}")
     private long expirationMs;
 
-    private Key getSigningKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(secret);
-        return Keys.hmacShaKeyFor(keyBytes);
+    private Key signingKey() {
+        byte[] bytes = Decoders.BASE64.decode(secretHex);
+        return Keys.hmacShaKeyFor(bytes);
     }
 
-    public String generateToken(String email) {
+    public String generateToken(String email, String role, String userId) {
         return Jwts.builder()
                 .setSubject(email)
+                .claim("role", role)
+                .claim("userId", userId)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .signWith(signingKey(), SignatureAlgorithm.HS256)
                 .compact();
+    }
+
+    public boolean validateToken(String token) {
+        try {
+            Jwts.parserBuilder().setSigningKey(signingKey()).build().parseClaimsJws(token);
+            return true;
+        } catch (JwtException | IllegalArgumentException e) {
+            log.debug("[JWT] Invalid token: {}", e.getMessage());
+            return false;
+        }
     }
 
     public String extractEmail(String token) {
         return getClaims(token).getSubject();
     }
 
-    public boolean validateToken(String token) {
-        try {
-            getClaims(token);
-            return true;
-        } catch (ExpiredJwtException e) {
-            log.warn("[JWT] Token expired");
-        } catch (JwtException e) {
-            log.warn("[JWT] Invalid token: {}", e.getMessage());
-        }
-        return false;
+    public String extractRole(String token) {
+        return (String) getClaims(token).get("role");
+    }
+
+    public String extractUserId(String token) {
+        return (String) getClaims(token).get("userId");
     }
 
     private Claims getClaims(String token) {
         return Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
+                .setSigningKey(signingKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody();

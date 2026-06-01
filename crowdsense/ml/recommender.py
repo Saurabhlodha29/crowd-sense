@@ -1,93 +1,94 @@
 # ml/recommender.py
-import os
-import requests
-from typing import List, Dict
+# Content-based stall recommendation engine.
+#
+# Score formula (weighted sum, higher = better recommendation):
+#   score = preference_match * 0.40
+#         + (1 / crowd_density) * 0.35
+#         + (1 / distance_factor) * 0.25
+#
+# Phase 1 (now): rule-based scoring — no training needed.
+# Phase 3 (later): replace preference_match with a trained
+#                  collaborative filtering model (matrix factorisation).
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8080")
+import math
+import logging
+from typing import Any
 
-# Category preference weights — how much the user cares about each category
-CATEGORY_WEIGHTS = {
-    "food":        1.0,
-    "merchandise": 0.8,
-    "activity":    0.9,
-    "service":     0.6,
-    "stage":       1.0,
-}
+logger = logging.getLogger(__name__)
 
-def fetch_crowd_data(event_id: str) -> Dict[str, int]:
-    """Get current person_count per zone for this event from the backend."""
-    try:
-        r = requests.get(f"{BACKEND_URL}/api/v1/readings/latest", timeout=5)
-        if r.status_code == 200:
-            readings = r.json()
-            # {location_id: person_count}
-            return {rd["locationId"]: rd["personCount"] for rd in readings}
-    except Exception:
-        pass
-    return {}
+# Crowd level → base cost (higher = more crowded = less desirable)
+CROWD_COST = {"LOW": 1.0, "MEDIUM": 2.5, "HIGH": 5.0, "CRITICAL": 10.0, "UNKNOWN": 3.0}
 
-def fetch_stalls(event_id: str) -> List[Dict]:
-    """Get all active stalls for this event from the backend."""
-    try:
-        r = requests.get(f"{BACKEND_URL}/api/v1/events/{event_id}/stalls", timeout=5)
-        if r.status_code == 200:
-            return r.json()
-    except Exception:
-        pass
-    # Fallback: demo stalls for testing
-    return [
-        {"id": "s1", "name": "Biryani Corner",  "category": "food",        "zone_id": "loc_001", "latitude": 28.6139, "longitude": 77.2090},
-        {"id": "s2", "name": "Craft Market",    "category": "merchandise", "zone_id": "loc_001", "latitude": 28.6140, "longitude": 77.2091},
-        {"id": "s3", "name": "Main Stage",      "category": "stage",       "zone_id": "loc_002", "latitude": 28.6141, "longitude": 77.2092},
-        {"id": "s4", "name": "Coffee Stall",    "category": "food",        "zone_id": "loc_002", "latitude": 28.6142, "longitude": 77.2093},
-        {"id": "s5", "name": "Gaming Zone",     "category": "activity",    "zone_id": "loc_003", "latitude": 28.6143, "longitude": 77.2094},
-    ]
 
-def score_stall(stall: Dict, prefs: List[str], crowd_data: Dict, user_lat: float, user_lon: float) -> float:
+def score_stalls(
+    stalls:     list,        # [{id, name, category, zone_id, latitude, longitude, rating}]
+    crowd_data: dict,        # {zone_id: {crowd_level, person_count, ...}}
+    prefs:      list,        # ["food", "activity", ...]  — from attendee profile
+    user_lat:   float | None = None,
+    user_lng:   float | None = None,
+) -> list:
     """
-    Score = preference_match (0.4) + crowd_inverse (0.35) + distance_inverse (0.25)
-    All components normalized 0-1.
+    Score and rank stalls.  Returns list sorted best-first.
     """
-    # 1. Preference match
-    category = stall.get("category", "")
-    base_weight = CATEGORY_WEIGHTS.get(category, 0.5)
-    pref_match = 1.0 if category in prefs else base_weight * 0.3
-
-    # 2. Crowd density (lower crowd = higher score)
-    zone_id = stall.get("zone_id")
-    crowd = crowd_data.get(zone_id, 0) if zone_id else 0
-    # Normalize: 0 people = 1.0, 100 people = 0.0
-    crowd_score = max(0.0, 1.0 - crowd / 100.0)
-
-    # 3. Distance (simple Euclidean approximation — good enough for venue scale)
-    stall_lat = stall.get("latitude", user_lat)
-    stall_lon = stall.get("longitude", user_lon)
-    dist = ((stall_lat - user_lat) ** 2 + (stall_lon - user_lon) ** 2) ** 0.5
-    # Normalize: 0 distance = 1.0, 0.01 degree (~1km) = 0.0
-    dist_score = max(0.0, 1.0 - dist / 0.01)
-
-    return round(pref_match * 0.40 + crowd_score * 0.35 + dist_score * 0.25, 4)
-
-def get_recommendations(event_id: str, prefs: List[str], user_lat: float, user_lon: float, top_n: int = 5) -> List[Dict]:
-    crowd_data = fetch_crowd_data(event_id)
-    stalls = fetch_stalls(event_id)
+    if not stalls:
+        return []
 
     scored = []
     for stall in stalls:
-        s = score_stall(stall, prefs, crowd_data, user_lat, user_lon)
-        zone_id = stall.get("zone_id")
-        scored.append({
-            **stall,
-            "score":        s,
-            "crowd_count":  crowd_data.get(zone_id, 0),
-            "crowd_level":  _crowd_level(crowd_data.get(zone_id, 0)),
-        })
+        s = _score_one(stall, crowd_data, prefs, user_lat, user_lng)
+        scored.append({**stall, "score": round(s, 4)})
 
     scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored[:top_n]
+    return scored
 
-def _crowd_level(count: int) -> str:
-    if count < 10:  return "LOW"
-    if count < 25:  return "MEDIUM"
-    if count < 50:  return "HIGH"
-    return "CRITICAL"
+
+def _score_one(
+    stall:      dict,
+    crowd_data: dict,
+    prefs:      list,
+    user_lat:   float | None,
+    user_lng:   float | None,
+) -> float:
+    # ── 1. Preference match (0–1) ─────────────────────────────────────────
+    stall_cat = (stall.get("category") or "").lower()
+    pref_lower = [p.lower() for p in prefs] if prefs else []
+    if pref_lower:
+        pref_score = 1.0 if stall_cat in pref_lower else 0.2
+    else:
+        pref_score = 0.5   # neutral if no preferences stated
+
+    # ── 2. Crowd factor (0–1, higher = less crowded) ─────────────────────
+    zone_id    = stall.get("zone_id")
+    zone_cd    = crowd_data.get(zone_id, {})
+    level      = zone_cd.get("crowd_level", "UNKNOWN")
+    crowd_inv  = 1.0 / CROWD_COST.get(level, 3.0)   # range ~0.1 – 1.0
+
+    # ── 3. Distance factor (0–1, closer = higher score) ──────────────────
+    slat = stall.get("latitude")
+    slng = stall.get("longitude")
+    if user_lat and user_lng and slat and slng:
+        dist_m = _haversine(user_lat, user_lng, slat, slng)
+        # Normalize: 0 m → 1.0, 500 m → 0.5, 2000 m → ~0.2
+        dist_factor = 1.0 / (1.0 + dist_m / 500.0)
+    else:
+        dist_factor = 0.5   # neutral if no location data
+
+    # ── 4. Rating bonus (0–0.1 extra) ────────────────────────────────────
+    rating_bonus = (stall.get("rating") or 0) / 50.0   # 5-star → +0.1
+
+    score = (
+        pref_score  * 0.40 +
+        crowd_inv   * 0.35 +
+        dist_factor * 0.25 +
+        rating_bonus
+    )
+    return score
+
+
+def _haversine(lat1, lng1, lat2, lng2) -> float:
+    R = 6_371_000
+    φ1, φ2 = math.radians(lat1), math.radians(lat2)
+    dφ = math.radians(lat2 - lat1)
+    dλ = math.radians(lng2 - lng1)
+    a  = math.sin(dφ/2)**2 + math.cos(φ1)*math.cos(φ2)*math.sin(dλ/2)**2
+    return R * 2 * math.asin(math.sqrt(a))

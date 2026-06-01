@@ -1,3 +1,4 @@
+// backend/src/main/java/com/crowdsense/model/Alert.java
 package com.crowdsense.model;
 
 import jakarta.persistence.*;
@@ -19,6 +20,12 @@ public class Alert {
     @Column(name = "location_id", nullable = false)
     private String locationId;
 
+    /**
+     * Alert type:
+     * THRESHOLD_EXCEEDED – crowd crossed HIGH or CRITICAL threshold
+     * SENSOR_PARTIAL_OFFLINE – one sensor (camera or WiFi) went down
+     * SENSOR_OFFLINE – both sensors offline
+     */
     @Column(name = "alert_type", nullable = false)
     private String alertType;
 
@@ -31,7 +38,6 @@ public class Alert {
     @Column(name = "person_count")
     private Integer personCount;
 
-    @Builder.Default
     private Boolean resolved = false;
 
     @Column(name = "triggered_at")
@@ -42,9 +48,9 @@ public class Alert {
 
     @PrePersist
     public void prePersist() {
-        if (this.triggeredAt == null)
-            this.triggeredAt = Instant.now();
-        if (this.resolved == null)
-            this.resolved = false;
+        if (triggeredAt == null)
+            triggeredAt = Instant.now();
+        if (resolved == null)
+            resolved = false;
     }
 }

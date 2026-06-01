@@ -1,71 +1,44 @@
+// frontend/src/hooks/useWebSocket.js
 import { useEffect, useState, useRef } from "react";
-import { Client } from "@stomp/stompjs";
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8080";
-
-// Shared singleton client — prevents duplicate connections across re-renders
-let sharedClient = null;
-const subscribers = new Set();
-
-function getOrCreateClient(onMessage) {
-  if (sharedClient && sharedClient.connected) {
-    return sharedClient;
-  }
-
-  const wsUrl = BACKEND_URL.replace(/^http/, "ws") + "/ws/websocket";
-
-  sharedClient = new Client({
-    brokerURL: wsUrl,
-    reconnectDelay: 5000,
-    onConnect: () => {
-      console.log("[WS] Connected to CrowdSense backend");
-      sharedClient.subscribe("/topic/crowd", (msg) => {
-        try {
-          const data = JSON.parse(msg.body);
-          subscribers.forEach((cb) => cb({ type: "crowd", data }));
-        } catch (e) {
-          console.warn("[WS] Bad crowd message", e);
-        }
-      });
-      sharedClient.subscribe("/topic/alerts", (msg) => {
-        try {
-          const data = JSON.parse(msg.body);
-          subscribers.forEach((cb) => cb({ type: "alert", data }));
-        } catch (e) {
-          console.warn("[WS] Bad alert message", e);
-        }
-      });
-    },
-    onDisconnect: () => console.log("[WS] Disconnected"),
-    onStompError: (frame) => console.error("[WS] STOMP error:", frame),
-  });
-
-  sharedClient.activate();
-  return sharedClient;
-}
+import {
+  connectWebSocket,
+  onCrowdUpdate,
+  onAlert,
+  onSensorStatus,
+} from "../api/websocketClient";
 
 export function useWebSocket() {
-  const [latestCrowdUpdate, setLatestCrowdUpdate] = useState(null);
-  const [latestAlert, setLatestAlert] = useState(null);
-  const [connected, setConnected] = useState(false);
+  const [latestCrowd,   setLatestCrowd]   = useState(null);
+  const [latestAlert,   setLatestAlert]   = useState(null);
+  const [sensorStatus,  setSensorStatus]  = useState(null);
+  const [connected,     setConnected]     = useState(false);
+
+  // Crowd readings keyed by locationId for easy lookup
+  const [crowdMap, setCrowdMap] = useState({});
 
   useEffect(() => {
-    const handler = ({ type, data }) => {
-      if (type === "crowd") {
-        setLatestCrowdUpdate(data);
-        setConnected(true);
-      } else if (type === "alert") {
-        setLatestAlert(data);
-      }
-    };
+    connectWebSocket();
 
-    subscribers.add(handler);
-    getOrCreateClient(handler);
+    const unsubCrowd  = onCrowdUpdate((data) => {
+      setLatestCrowd(data);
+      setConnected(true);
+      setCrowdMap((prev) => ({ ...prev, [data.locationId]: data }));
+    });
+
+    const unsubAlert  = onAlert((data) => {
+      setLatestAlert(data);
+    });
+
+    const unsubSensor = onSensorStatus((data) => {
+      setSensorStatus(data);
+    });
 
     return () => {
-      subscribers.delete(handler);
+      unsubCrowd();
+      unsubAlert();
+      unsubSensor();
     };
   }, []);
 
-  return { latestCrowdUpdate, latestAlert, connected };
+  return { latestCrowd, latestAlert, sensorStatus, connected, crowdMap };
 }

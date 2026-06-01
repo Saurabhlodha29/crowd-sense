@@ -1,3 +1,4 @@
+// backend/src/main/java/com/crowdsense/controller/AlertController.java
 package com.crowdsense.controller;
 
 import com.crowdsense.model.Alert;
@@ -17,24 +18,36 @@ public class AlertController {
 
     private final AlertService alertService;
 
+    /**
+     * GET /alerts?filter=active|resolved|all
+     * Returns alerts sorted by triggeredAt DESC.
+     */
     @GetMapping
-    public ResponseEntity<List<Alert>> getAlerts(
-            @RequestParam(defaultValue = "all") String filter) {
-        List<Alert> alerts = switch (filter) {
-            case "active" -> alertService.getActiveAlerts();
-            case "resolved" -> alertService.getResolvedAlerts();
-            default -> alertService.getAllAlerts();
-        };
-        return ResponseEntity.ok(alerts);
+    public ResponseEntity<List<Alert>> list(
+            @RequestParam(defaultValue = "active") String filter) {
+        return ResponseEntity.ok(alertService.getAlerts(filter));
     }
 
+    /**
+     * GET /alerts/stats
+     * Returns { active: N, resolved: N, total: N }
+     */
     @GetMapping("/stats")
-    public ResponseEntity<Map<String, Long>> getStats() {
-        return ResponseEntity.ok(alertService.getAlertStats());
+    public ResponseEntity<Map<String, Long>> stats() {
+        return ResponseEntity.ok(alertService.getStats());
     }
 
+    /**
+     * PUT /alerts/{id}/resolve
+     * Marks the alert as resolved and sets resolved_at = now().
+     * Requires JWT (ORGANIZER or ADMIN).
+     */
     @PutMapping("/{id}/resolve")
-    public ResponseEntity<Alert> resolveAlert(@PathVariable String id) {
-        return ResponseEntity.ok(alertService.resolveAlert(id));
+    public ResponseEntity<Alert> resolve(@PathVariable String id) {
+        try {
+            return ResponseEntity.ok(alertService.resolve(id));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }

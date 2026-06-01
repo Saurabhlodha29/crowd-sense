@@ -1,3 +1,4 @@
+// backend/src/main/java/com/crowdsense/model/CrowdReading.java
 package com.crowdsense.model;
 
 import jakarta.persistence.*;
@@ -26,8 +27,22 @@ public class CrowdReading {
     @Enumerated(EnumType.STRING)
     private CrowdLevel crowdLevel;
 
-    @Column(name = "confidence")
     private Double confidence;
+
+    /**
+     * JSON array of person positions: [{"id":1,"lat":28.61,"lng":77.21}, ...]
+     * These are real-world lat/lng converted from pixel coords via calibration,
+     * or randomly distributed within the zone polygon when no camera is available.
+     * Stored as JSONB in PostgreSQL.
+     */
+    @Column(name = "positions", columnDefinition = "TEXT")
+    private String positions;
+
+    /**
+     * Data source: HYBRID | CAMERA_ONLY | WIFI_ONLY | SIMULATION | DEMO_VIDEO
+     */
+    @Column(name = "source")
+    private String source = "HYBRID";
 
     @Column(name = "captured_at", nullable = false)
     private Instant capturedAt;
@@ -41,9 +56,7 @@ public class CrowdReading {
 
     @PrePersist
     public void prePersist() {
-        if (this.createdAt == null)
-            this.createdAt = Instant.now();
-        if (this.capturedAt == null)
-            this.capturedAt = Instant.now();
+        if (createdAt == null)
+            createdAt = Instant.now();
     }
 }
